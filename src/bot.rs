@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use poise::serenity_prelude::{self as serenity, CacheHttp, GatewayIntents};
+use poise::serenity_prelude::{self as serenity, CacheHttp, GatewayIntents, RoleId};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -14,6 +14,7 @@ use crate::{Error, Result};
 
 pub struct Data {
     pub server_directory: Box<Path>,
+    pub operator_role_id: RoleId,
 }
 
 pub type Context<'a> = poise::Context<'a, Data, Error>;
@@ -37,6 +38,7 @@ pub async fn start_bot() -> Result<()> {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
                     server_directory: PathBuf::from(crate::env::server_directory()).into(),
+                    operator_role_id: crate::env::discord_operator_role_id().into(),
                 })
             })
         })
@@ -118,4 +120,20 @@ where
         .await?
         .id,
     )?)
+}
+
+pub async fn is_operator(ctx: Context<'_>) -> Result<bool> {
+    let Some(member) = ctx.author_member().await else {
+        return Ok(false);
+    };
+
+    if member.roles.contains(&ctx.data().operator_role_id) {
+        Ok(true)
+    } else {
+        let _ = ctx
+            .reply("You do not have the required role to run this command.")
+            .await;
+
+        Ok(false)
+    }
 }

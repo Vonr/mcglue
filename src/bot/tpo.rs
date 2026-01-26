@@ -26,7 +26,7 @@ async fn autocomplete_dimension<'a>(
 }
 
 /// Teleport an offline player.
-#[poise::command(slash_command, guild_only)]
+#[poise::command(slash_command, guild_only, check = "super::is_operator")]
 pub async fn tpo(
     ctx: Context<'_>,
     #[description = "Name or UUID of the player"] player: String,
@@ -40,8 +40,6 @@ pub async fn tpo(
     let uuid = super::maybe_username_to_uuid(&player).await?;
 
     let players = crate::interface::list().await?;
-
-    eprintln!("players: {players:?}");
 
     if let Some(p) = players
         .iter()

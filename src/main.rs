@@ -66,6 +66,9 @@ mod env {
         discord_console_channel_id, "DISCORD_CONSOLE_CHANNEL_ID", u64,
         "DISCORD_CONSOLE_CHANNEL_ID should be set to a Discord channel ID";
 
+        discord_operator_role_id, "DISCORD_OPERATOR_ROLE_ID", u64,
+        "DISCORD_OPERATOR_ROLE_ID should be set to a Discord role ID";
+
         server_directory, "SERVER_DIRECTORY", String,
         "SERVER_DIRECTORY should be set to the path to the server's root directory";
     }
