@@ -10,6 +10,7 @@ use std::{
 use bstr::ByteSlice;
 use chumsky::{prelude::*, span::Span};
 use futures::future::Lazy;
+use uuid::Uuid;
 
 use crate::{DEATH_MESSAGES, DeathMessageComponent};
 
@@ -23,6 +24,9 @@ enum PartialLog<'src> {
         secure: bool,
         sender: &'src [u8],
         message: &'src [u8],
+    },
+    List {
+        data: ListUuidsLog<'src>,
     },
     Join {
         player: &'src [u8],
@@ -48,6 +52,7 @@ enum PartialLog<'src> {
 pub enum Log<'src> {
     Generic(GenericLog<'src>),
     Chat(ChatLog<'src>),
+    List(ListUuidsLog<'src>),
     Join(JoinLog<'src>),
     Leave(LeaveLog<'src>),
     Advancement(AdvancementLog<'src>),
@@ -110,6 +115,17 @@ impl<'src> Log<'src> {
             }
         }
 
+        let hex = |n| {
+            any::<'src, &'src [u8], LoggerParserExtra<'src>>()
+                .filter(u8::is_ascii_hexdigit)
+                .repeated()
+                .exactly(n)
+                .to_slice()
+                .try_map(|s: &[u8], span| {
+                    btoi::btou_radix(s, 16).map_err(|e| Rich::custom(span, e))
+                })
+        };
+
         let non_whitespace_slice = any::<'src, &'src [u8], LoggerParserExtra<'src>>()
             .filter(|b: &u8| !b.is_ascii_whitespace())
             .repeated()
@@ -146,6 +162,57 @@ impl<'src> Log<'src> {
             sender,
             message,
         })
+        .only_if_logger(LogLevel::Info, b"Server thread");
+
+        let list = group((
+            just(b"There are ").ignored(),
+            text::int(10)
+                .try_map(|s: &[u8], span| btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e))),
+            just(b" of a max of ").ignored(),
+            text::int(10)
+                .try_map(|s: &[u8], span| btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e))),
+            just(b" players online: ").ignored(),
+            group((
+                any()
+                    .filter(|b: &u8| *b != b' ')
+                    .repeated()
+                    .at_least(1)
+                    .to_slice(),
+                just(b' ').ignored(),
+                group((
+                    hex(8),
+                    just(b'-').ignored(),
+                    hex(4),
+                    just(b'-').ignored(),
+                    hex(4),
+                    just(b'-').ignored(),
+                    hex(4),
+                    just(b'-').ignored(),
+                    hex(12),
+                ))
+                .map(|(a, _, b, _, c, _, d, _, e)| {
+                    let mut uuid = a;
+                    uuid <<= 16;
+                    uuid += b;
+                    uuid <<= 16;
+                    uuid += c;
+                    uuid <<= 16;
+                    uuid += d;
+                    uuid <<= 48;
+                    uuid += e;
+
+                    Uuid::from_u128(uuid)
+                })
+                .delimited_by(just(b'('), just(b')')),
+            ))
+            .map(|(name, _, uuid)| PlayerData { name, uuid })
+            .separated_by(just(b' '))
+            .collect::<Vec<_>>(),
+        ))
+        .map(|(_, _, _, _, _, players)| PartialLog::List {
+            data: ListUuidsLog { players },
+        })
+        .map_err(|e| Rich::custom(*e.span(), "Could not parse as `/list uuids` output"))
         .only_if_logger(LogLevel::Info, b"Server thread");
 
         let join = non_whitespace_slice
@@ -276,7 +343,7 @@ impl<'src> Log<'src> {
             .to_slice()
             .map(|message| PartialLog::Generic { message });
 
-        let partial_logs = choice((chat, join, leave, advancement, death, generic));
+        let partial_logs = choice((chat, join, leave, advancement, list, death, generic));
 
         group((
             HmsTime::parser()
@@ -304,6 +371,7 @@ impl<'src> Log<'src> {
                         sender: ShowLossyStr(sender),
                         message: ShowLossyStr(message),
                     }),
+                    PartialLog::List { data } => Self::List(data),
                     PartialLog::Join { player } => Self::Join(JoinLog {
                         time,
                         player: ShowLossyStr(player),
@@ -383,6 +451,97 @@ pub struct DeathLog<'src> {
     pub victim: ShowLossyStr<'src>,
     pub attacker: ShowLossyStr<'src>,
     pub weapon: ShowLossyStr<'src>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ListUuidsLog<'src> {
+    pub players: Vec<PlayerData<'src>>,
+}
+
+impl<'src> ListUuidsLog<'src> {
+    pub fn parser() -> impl Parser<'src, &'src [u8], ListUuidsLog<'src>, extra::Err<Rich<'src, u8>>>
+    {
+        let hex = |n| {
+            any()
+                .filter(u8::is_ascii_hexdigit)
+                .repeated()
+                .exactly(n)
+                .to_slice()
+                .try_map(|s: &[u8], span| {
+                    btoi::btou_radix(s, 16).map_err(|e| Rich::custom(span, e))
+                })
+        };
+
+        group((
+            just(b"There are ").ignored(),
+            text::int(10)
+                .try_map(|s: &[u8], span| btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e))),
+            just(b" of a max of ").ignored(),
+            text::int(10)
+                .try_map(|s: &[u8], span| btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e))),
+            just(b" players online: ").ignored(),
+            group((
+                any()
+                    .filter(|b| *b != b' ')
+                    .repeated()
+                    .at_least(1)
+                    .to_slice(),
+                just(b' ').ignored(),
+                group((
+                    hex(8),
+                    just(b'-').ignored(),
+                    hex(4),
+                    just(b'-').ignored(),
+                    hex(4),
+                    just(b'-').ignored(),
+                    hex(4),
+                    just(b'-').ignored(),
+                    hex(12),
+                ))
+                .map(|(a, _, b, _, c, _, d, _, e)| {
+                    let mut uuid = a;
+                    uuid <<= 16;
+                    uuid += b;
+                    uuid <<= 16;
+                    uuid += c;
+                    uuid <<= 16;
+                    uuid += d;
+                    uuid <<= 48;
+                    uuid += e;
+
+                    Uuid::from_u128(uuid)
+                })
+                .delimited_by(just(b'('), just(b')')),
+            ))
+            .map(|(name, _, uuid)| PlayerData { name, uuid })
+            .separated_by(just(b' '))
+            .collect::<Vec<_>>(),
+        ))
+        .map(|(_, _, _, _, _, players)| ListUuidsLog { players })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PlayerData<'src> {
+    pub name: &'src [u8],
+    pub uuid: Uuid,
+}
+
+impl TryFrom<&PlayerData<'_>> for OwnedPlayerData {
+    type Error = crate::Error;
+
+    fn try_from(value: &PlayerData<'_>) -> Result<Self, Self::Error> {
+        Ok(OwnedPlayerData {
+            name: std::str::from_utf8(value.name)?.into(),
+            uuid: value.uuid,
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OwnedPlayerData {
+    pub name: Box<str>,
+    pub uuid: Uuid,
 }
 
 #[derive(Clone, Copy, Debug)]

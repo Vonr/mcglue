@@ -1,12 +1,20 @@
-mod run;
+mod tpo;
 
-use std::borrow::Cow;
+use std::{
+    borrow::Cow,
+    fmt::Display,
+    path::{Path, PathBuf},
+};
 
 use poise::serenity_prelude::{self as serenity, CacheHttp, GatewayIntents};
+use serde::Deserialize;
+use uuid::Uuid;
 
 use crate::{Error, Result};
 
-pub struct Data {}
+pub struct Data {
+    pub server_directory: Box<Path>,
+}
 
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 
@@ -18,7 +26,7 @@ pub async fn start_bot() -> Result<()> {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![run::run()],
+            commands: vec![tpo::tpo()],
             event_handler: |ctx, event, framework, data| {
                 Box::pin(event_handler(ctx, event, framework, data))
             },
@@ -27,7 +35,9 @@ pub async fn start_bot() -> Result<()> {
         .setup(|ctx, _ready, framework| {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data {})
+                Ok(Data {
+                    server_directory: PathBuf::from(crate::env::server_directory()).into(),
+                })
             })
         })
         .build();
@@ -81,4 +91,31 @@ async fn event_handler(
     }
 
     Ok(())
+}
+
+pub async fn maybe_username_to_uuid<S>(s: &S) -> Result<Uuid>
+where
+    S: ?Sized,
+    for<'a> &'a S: Display,
+    Uuid: for<'a> TryFrom<&'a S>,
+{
+    if let Ok(uuid) = Uuid::try_from(s) {
+        return Ok(uuid);
+    }
+
+    #[derive(Deserialize)]
+    struct Response {
+        id: Box<str>,
+    }
+
+    Ok(Uuid::parse_str(
+        &reqwest::get(format!(
+            "https://api.mojang.com/users/profiles/minecraft/{s}"
+        ))
+        .await?
+        .error_for_status()?
+        .json::<Response>()
+        .await?
+        .id,
+    )?)
 }

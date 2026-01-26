@@ -1,4 +1,5 @@
 mod bot;
+mod interface;
 mod parsing;
 
 use crate::parsing::*;
@@ -59,8 +60,8 @@ mod env {
         discord_console_channel_id, "DISCORD_CONSOLE_CHANNEL_ID", u64,
         "DISCORD_CONSOLE_CHANNEL_ID should be set to a Discord channel ID";
 
-        // server_root, "SERVER_ROOT", String,
-        // "SERVER_ROOT should be set to the path to the server's root directory";
+        server_directory, "SERVER_DIRECTORY", String,
+        "SERVER_DIRECTORY should be set to the path to the server's root directory";
     }
 }
 
@@ -267,7 +268,7 @@ async fn main() -> Result<()> {
             };
 
             eprintln!("{log:?}");
-            match log {
+            match &log {
                 Log::Chat(ChatLog {
                     sender, message, ..
                 }) => {
@@ -289,6 +290,21 @@ async fn main() -> Result<()> {
                                 .content(message.to_str_lossy()),
                         )
                         .await;
+                }
+                Log::List(ListUuidsLog { players }) => {
+                    let mut lock = interface::LIST_LISTENERS.lock();
+                    if lock.is_empty() {
+                        continue;
+                    }
+
+                    let mut owned = Vec::with_capacity(players.len());
+                    for player in players {
+                        owned.push(OwnedPlayerData::try_from(player)?);
+                    }
+
+                    for tx in lock.drain(..) {
+                        let _ = tx.send(owned.clone());
+                    }
                 }
                 Log::Join(JoinLog { player, .. }) => {
                     let sender: &str = &player.to_str_lossy();
