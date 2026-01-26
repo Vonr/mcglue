@@ -171,8 +171,8 @@ impl<'src> Log<'src> {
                     .filter(|b| *b != b']')
                     .repeated()
                     .at_least(1)
-                    .delimited_by(just(b'['), just(b']'))
-                    .to_slice(),
+                    .to_slice()
+                    .delimited_by(just(b'['), just(b']')),
             )
             .map(|(player, advancement)| PartialLog::Advancement {
                 player,
