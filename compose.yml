@@ -1,0 +1,15 @@
+services:
+  server:
+    image: itzg/minecraft-server:java25
+    stdin_open: true
+    tty: false
+    ports:
+      - "25565:25565"
+    expose:
+      - "25575"
+    environment:
+      VERSION: "1.21.1"
+      EULA: "TRUE"
+      JVM_OPTS: "-XX:+UseCompactObjectHeaders -XX:+UseZGC"
+    volumes:
+      - ./test-server:/data
