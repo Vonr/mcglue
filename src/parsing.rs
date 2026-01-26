@@ -9,7 +9,6 @@ use std::{
 
 use bstr::ByteSlice;
 use chumsky::{prelude::*, span::Span};
-use futures::future::Lazy;
 use uuid::Uuid;
 
 use crate::{DEATH_MESSAGES, DeathMessageComponent};
