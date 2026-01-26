@@ -4,7 +4,6 @@ use poise::{CreateReply, serenity_prelude::CreateAttachment};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::{collections::HashMap, fs::OpenOptions, io::Read};
-use uuid::Uuid;
 
 use fastnbt::Value;
 
@@ -56,14 +55,14 @@ pub async fn tpo(
         );
     }
 
+    let mut filename = uuid.as_hyphenated().to_string();
+    filename.push_str(".dat");
     let path = {
-        let mut filename = uuid.as_hyphenated().to_string();
-        filename.push_str(".dat");
         ctx.data()
             .server_directory
             .join("world")
             .join("playerdata")
-            .join(filename)
+            .join(&filename)
     };
 
     if !path.try_exists().unwrap_or(false) {
@@ -147,14 +146,14 @@ pub async fn tpo(
     ctx.send(
         CreateReply::default()
             .content(format!(
-                "Teleported {} to {} {} {} in {}",
+                "Teleported {} to {} {} {} in {}. The unmodified player data has been attached as a backup.",
                 uuid.as_hyphenated(),
                 x,
                 y,
                 z,
                 data.dimension
             ))
-            .attachment(CreateAttachment::bytes(original_bytes, "backup.dat")),
+            .attachment(CreateAttachment::bytes(original_bytes, &filename)),
     )
     .await?;
 
