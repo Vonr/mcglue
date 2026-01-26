@@ -15,8 +15,10 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use async_signal::{Signal, Signals};
 use bstr::ByteSlice;
 use chumsky::prelude::*;
-use futures::StreamExt;
-use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook};
+use poise::{
+    futures_util::StreamExt,
+    serenity_prelude::{CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook},
+};
 
 const HELP: &str = "\
 Usage: gluemc <path>
@@ -121,6 +123,7 @@ async fn main() -> Result<()> {
                                     false,
                                     ExecuteWebhook::new()
                                         .username("Console")
+                                        .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
                                         .content(s[..idx].iter().collect::<String>()),
                                 )
                                 .await
@@ -137,6 +140,7 @@ async fn main() -> Result<()> {
                                     false,
                                     ExecuteWebhook::new()
                                         .username("Console")
+                                        .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
                                         .content(s[..2000].iter().collect::<String>()),
                                 )
                                 .await
@@ -155,6 +159,7 @@ async fn main() -> Result<()> {
                             true,
                             ExecuteWebhook::new()
                                 .username("Console")
+                                .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
                                 .content(s.iter().collect::<String>()),
                         )
                         .await;
