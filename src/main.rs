@@ -3,7 +3,13 @@ mod interface;
 mod parsing;
 
 use crate::parsing::*;
-use std::{borrow::Cow, convert::Infallible, path::PathBuf, sync::OnceLock};
+use std::{
+    borrow::Cow,
+    convert::Infallible,
+    path::PathBuf,
+    sync::OnceLock,
+    time::{Duration, Instant},
+};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 use async_signal::{Signal, Signals};
@@ -81,8 +87,90 @@ async fn main() -> Result<()> {
 
     let http = Http::new(&token);
     let webhook = Webhook::from_url(&http, &crate::env::discord_webhook_url()).await?;
-    let console_webhook =
-        Webhook::from_url(&http, &crate::env::discord_console_webhook_url()).await?;
+
+    let log_to_console = {
+        let (tx, rx) = flume::unbounded::<Box<str>>();
+        let console_webhook =
+            Webhook::from_url(&http, &crate::env::discord_console_webhook_url()).await?;
+        let http = Http::new(&token);
+
+        tokio::spawn(async move {
+            let mut last_message = Instant::now();
+            let mut buf = String::with_capacity(4096);
+
+            loop {
+                if Instant::now().duration_since(last_message) > Duration::from_millis(100) {
+                    let s = buf.chars().collect::<Vec<_>>();
+                    let mut s = s.as_slice();
+
+                    while s.len() > 2000 {
+                        if let Some(idx) = s
+                            .iter()
+                            .enumerate()
+                            .rev()
+                            .skip(s.len() - 2000)
+                            .find(|(_, c)| **c == '\n')
+                            .map(|(idx, _)| idx)
+                        {
+                            if console_webhook
+                                .execute(
+                                    &http,
+                                    false,
+                                    ExecuteWebhook::new()
+                                        .username("Console")
+                                        .content(s[..idx].iter().collect::<String>()),
+                                )
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+
+                            s = &s[idx..];
+                        } else {
+                            if console_webhook
+                                .execute(
+                                    &http,
+                                    false,
+                                    ExecuteWebhook::new()
+                                        .username("Console")
+                                        .content(s[..2000].iter().collect::<String>()),
+                                )
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+
+                            s = &s[2000..];
+                        }
+                    }
+
+                    let _ = console_webhook
+                        .execute(
+                            &http,
+                            true,
+                            ExecuteWebhook::new()
+                                .username("Console")
+                                .content(s.iter().collect::<String>()),
+                        )
+                        .await;
+
+                    buf.clear();
+                }
+
+                if let Ok(msg) = rx.try_recv() {
+                    buf.push_str(&msg);
+                    last_message = Instant::now();
+                    continue;
+                }
+
+                tokio::task::yield_now().await;
+            }
+        });
+
+        tx
+    };
 
     let mut pargs = pico_args::Arguments::from_env();
     if pargs.contains(["-h", "--help"]) {
@@ -195,63 +283,9 @@ async fn main() -> Result<()> {
                 continue;
             }
 
-            let _ = {
-                let s = buf[..n].to_str_lossy().chars().collect::<Vec<_>>();
-                let mut s = s.as_slice();
-
-                while s.len() > 2000 {
-                    if let Some(idx) = s
-                        .iter()
-                        .enumerate()
-                        .rev()
-                        .skip(s.len() - 2000)
-                        .find(|(_, c)| **c == '\n')
-                        .map(|(idx, _)| idx)
-                    {
-                        if console_webhook
-                            .execute(
-                                &http,
-                                false,
-                                ExecuteWebhook::new()
-                                    .username("Console")
-                                    .content(s[..idx].iter().collect::<String>()),
-                            )
-                            .await
-                            .is_err()
-                        {
-                            break;
-                        }
-
-                        s = &s[idx..];
-                    } else {
-                        if console_webhook
-                            .execute(
-                                &http,
-                                false,
-                                ExecuteWebhook::new()
-                                    .username("Console")
-                                    .content(s[..2000].iter().collect::<String>()),
-                            )
-                            .await
-                            .is_err()
-                        {
-                            break;
-                        }
-
-                        s = &s[2000..];
-                    }
-                }
-
-                console_webhook
-                    .execute(
-                        &http,
-                        true,
-                        ExecuteWebhook::new()
-                            .username("Console")
-                            .content(s.iter().collect::<String>()),
-                    )
-                    .await
-            };
+            log_to_console
+                .send_async(buf[..n].to_str_lossy().into())
+                .await?;
 
             let parsed = {
                 let parser = Log::parser();
