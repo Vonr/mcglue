@@ -187,7 +187,7 @@ async fn main() -> Result<()> {
             &http,
             false,
             ExecuteWebhook::new()
-                .username("[Console]")
+                .username("Console")
                 .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
                 .embed(
                     CreateEmbed::new()
@@ -504,7 +504,7 @@ async fn main() -> Result<()> {
                 &http,
                 false,
                 ExecuteWebhook::new()
-                    .username("[Console]")
+                    .username("Console")
                     .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
                     .embed(
                         CreateEmbed::new()
