@@ -3,11 +3,11 @@ mod interface;
 mod parsing;
 
 use crate::parsing::*;
-use eyre::bail;
+use eyre::{bail, eyre};
 use std::{
     borrow::Cow,
     process::Stdio,
-    sync::OnceLock,
+    sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -177,6 +177,10 @@ async fn main() -> Result<()> {
 
         tx
     };
+
+    interface::LIST_SENDER
+        .set(tokio::sync::broadcast::channel(16).0)
+        .map_err(|e| eyre!("Could not set LIST_SENDER to a broadcast channel sender: {e:?}"))?;
 
     let mut args = std::env::args();
     let binary_name = args.next().unwrap_or_else(|| String::from("gluemc"));
@@ -375,19 +379,13 @@ async fn main() -> Result<()> {
                         .await;
                 }
                 Log::List(ListUuidsLog { players }) => {
-                    let mut lock = interface::LIST_LISTENERS.lock();
-                    if lock.is_empty() {
-                        continue;
-                    }
-
                     let mut owned = Vec::with_capacity(players.len());
                     for player in players {
                         owned.push(OwnedPlayerData::try_from(player)?);
                     }
 
-                    for tx in lock.drain(..) {
-                        let _ = tx.send(owned.clone());
-                    }
+                    let owned: Arc<[OwnedPlayerData]> = owned.into();
+                    interface::LIST_SENDER.get().unwrap().send(owned)?;
                 }
                 Log::Join(JoinLog { player, .. }) => {
                     let sender: &str = &player.to_str_lossy();

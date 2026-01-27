@@ -1,16 +1,12 @@
-use std::{collections::VecDeque, sync::LazyLock};
-
-use parking_lot::Mutex;
-use tokio::sync::oneshot;
+use std::sync::{Arc, OnceLock};
 
 use crate::{Result, parsing::OwnedPlayerData};
 
-pub static LIST_LISTENERS: LazyLock<Mutex<VecDeque<oneshot::Sender<Vec<OwnedPlayerData>>>>> =
-    LazyLock::new(|| Mutex::new(VecDeque::new()));
+pub static LIST_SENDER: OnceLock<tokio::sync::broadcast::Sender<Arc<[OwnedPlayerData]>>> =
+    OnceLock::new();
 
-pub async fn list() -> Result<Vec<OwnedPlayerData>> {
-    let (tx, rx) = oneshot::channel::<Vec<OwnedPlayerData>>();
-    LIST_LISTENERS.lock().push_back(tx);
+pub async fn list() -> Result<Arc<[OwnedPlayerData]>> {
+    let mut rx = LIST_SENDER.get().unwrap().subscribe();
     crate::command(*b"list").await?;
-    Ok(rx.await?)
+    Ok(rx.recv().await?)
 }
