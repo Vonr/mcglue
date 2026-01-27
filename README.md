@@ -1,4 +1,4 @@
-# gluemc
+# mcglue
 
 Simple wrapper for Minecraft servers that aims to be version-independent and independent of mods.
 
@@ -11,10 +11,10 @@ Console logs are sent to the console channel, and messages sent there are execut
 ### Usage
 
 ```sh
-gluemc <command>
+mcglue <command>
 
 # Example (see test.sh)
-gluemc docker compose attach server
+mcglue docker compose attach server
 ```
 
 ### Environment Variables
