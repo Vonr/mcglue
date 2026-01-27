@@ -379,13 +379,18 @@ async fn main() -> Result<()> {
                         .await;
                 }
                 Log::List(ListUuidsLog { players }) => {
+                    let tx = interface::LIST_SENDER.get().unwrap();
+                    if tx.receiver_count() == 0 {
+                        continue;
+                    }
+
                     let mut owned = Vec::with_capacity(players.len());
                     for player in players {
                         owned.push(OwnedPlayerData::try_from(player)?);
                     }
 
                     let owned: Arc<[OwnedPlayerData]> = owned.into();
-                    interface::LIST_SENDER.get().unwrap().send(owned)?;
+                    let _ = tx.send(owned);
                 }
                 Log::Join(JoinLog { player, .. }) => {
                     let sender: &str = &player.to_str_lossy();
