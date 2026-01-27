@@ -17,7 +17,7 @@ use bstr::ByteSlice;
 use chumsky::prelude::*;
 use poise::{
     futures_util::StreamExt,
-    serenity_prelude::{CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook},
+    serenity_prelude::{CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook, colours},
 };
 
 type Error = eyre::Error;
@@ -181,6 +181,22 @@ async fn main() -> Result<()> {
     let mut args = std::env::args();
     let binary_name = args.next().unwrap_or_else(|| String::from("gluemc"));
 
+    eprintln!("Starting server");
+    webhook
+        .execute(
+            &http,
+            false,
+            ExecuteWebhook::new()
+                .username("[Console]")
+                .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
+                .embed(
+                    CreateEmbed::new()
+                        .author(CreateEmbedAuthor::new("Starting server"))
+                        .colour(colours::branding::GREEN),
+                ),
+        )
+        .await?;
+
     let mut process = {
         let Some(cmd_name) = args.next() else {
             println!("Usage: {binary_name} <command>");
@@ -305,6 +321,9 @@ async fn main() -> Result<()> {
     let _ = DEATH_MESSAGES.get_or_init(|| Box::leak(death_messages));
 
     let log_ingester = tokio::task::spawn(async move {
+        let http = Http::new(&token);
+        let webhook = Webhook::from_url(&http, &crate::env::discord_webhook_url()).await?;
+
         let mut input = BufReader::new(stdout);
         let mut buf = Vec::with_capacity(16384);
 
@@ -383,10 +402,12 @@ async fn main() -> Result<()> {
                                 .username(sender)
                                 .avatar_url(&avatar)
                                 .embed(
-                                    CreateEmbed::new().author(
-                                        CreateEmbedAuthor::new(format!("{sender} joined"))
-                                            .icon_url(&avatar),
-                                    ),
+                                    CreateEmbed::new()
+                                        .author(
+                                            CreateEmbedAuthor::new(format!("{sender} joined"))
+                                                .icon_url(&avatar),
+                                        )
+                                        .colour(colours::branding::GREEN),
                                 ),
                         )
                         .await;
@@ -404,10 +425,12 @@ async fn main() -> Result<()> {
                                 .username(sender)
                                 .avatar_url(&avatar)
                                 .embed(
-                                    CreateEmbed::new().author(
-                                        CreateEmbedAuthor::new(format!("{sender} left"))
-                                            .icon_url(&avatar),
-                                    ),
+                                    CreateEmbed::new()
+                                        .author(
+                                            CreateEmbedAuthor::new(format!("{sender} left"))
+                                                .icon_url(&avatar),
+                                        )
+                                        .colour(colours::branding::RED),
                                 ),
                         )
                         .await;
@@ -425,12 +448,14 @@ async fn main() -> Result<()> {
                                 .username(sender)
                                 .avatar_url(&avatar)
                                 .embed(
-                                    CreateEmbed::new().author(
-                                        CreateEmbedAuthor::new(
-                                            buf[span.into_range()].to_str_lossy(),
+                                    CreateEmbed::new()
+                                        .author(
+                                            CreateEmbedAuthor::new(
+                                                buf[span.into_range()].to_str_lossy(),
+                                            )
+                                            .icon_url(&avatar),
                                         )
-                                        .icon_url(&avatar),
-                                    ),
+                                        .colour(colours::branding::YELLOW),
                                 ),
                         )
                         .await;
@@ -448,12 +473,14 @@ async fn main() -> Result<()> {
                                 .username(sender)
                                 .avatar_url(&avatar)
                                 .embed(
-                                    CreateEmbed::new().author(
-                                        CreateEmbedAuthor::new(
-                                            buf[span.into_range()].to_str_lossy(),
+                                    CreateEmbed::new()
+                                        .author(
+                                            CreateEmbedAuthor::new(
+                                                buf[span.into_range()].to_str_lossy(),
+                                            )
+                                            .icon_url(&avatar),
                                         )
-                                        .icon_url(&avatar),
-                                    ),
+                                        .colour(colours::branding::RED),
                                 ),
                         )
                         .await;
@@ -471,7 +498,21 @@ async fn main() -> Result<()> {
 
     let mut signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])?;
     if signals.next().await.is_some() {
-        eprintln!("Stopping server.");
+        eprintln!("Stopping server");
+        webhook
+            .execute(
+                &http,
+                false,
+                ExecuteWebhook::new()
+                    .username("[Console]")
+                    .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
+                    .embed(
+                        CreateEmbed::new()
+                            .author(CreateEmbedAuthor::new("Stopping server"))
+                            .colour(colours::branding::RED),
+                    ),
+            )
+            .await?;
         command(*b"stop").await?;
         let _ = process.wait().await;
     }
