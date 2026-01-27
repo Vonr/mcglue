@@ -1,3 +1,4 @@
+mod crash;
 mod tpo;
 
 use std::{
@@ -27,7 +28,7 @@ pub async fn start_bot() -> Result<()> {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![tpo::tpo()],
+            commands: vec![crash::crash(), tpo::tpo()],
             event_handler: |ctx, event, framework, data| {
                 Box::pin(event_handler(ctx, event, framework, data))
             },
