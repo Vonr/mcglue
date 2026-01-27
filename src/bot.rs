@@ -83,9 +83,10 @@ async fn event_handler(
                     content.push_str("> ");
                     content.push_str(&new_message.content);
 
-                    println!(r#"tellraw @a {{"text":{:?}}}"#, content);
+                    crate::command(format!(r#"tellraw @a {{"text":{:?}}}"#, content).as_bytes())
+                        .await?;
                 } else if new_message.channel_id.get() == crate::env::discord_console_channel_id() {
-                    println!("{}", &new_message.content);
+                    crate::command(new_message.content.as_bytes()).await?;
                 }
             }
         }

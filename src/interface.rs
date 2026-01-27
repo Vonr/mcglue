@@ -11,6 +11,6 @@ pub static LIST_LISTENERS: LazyLock<Mutex<VecDeque<oneshot::Sender<Vec<OwnedPlay
 pub async fn list() -> Result<Vec<OwnedPlayerData>> {
     let (tx, rx) = oneshot::channel::<Vec<OwnedPlayerData>>();
     LIST_LISTENERS.lock().push_back(tx);
-    println!("list");
+    crate::command(*b"list").await?;
     Ok(rx.await?)
 }

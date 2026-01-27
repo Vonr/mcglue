@@ -3,14 +3,14 @@ mod interface;
 mod parsing;
 
 use crate::parsing::*;
+use eyre::bail;
 use std::{
     borrow::Cow,
-    convert::Infallible,
-    path::PathBuf,
+    process::Stdio,
     sync::OnceLock,
     time::{Duration, Instant},
 };
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use async_signal::{Signal, Signals};
 use bstr::ByteSlice;
@@ -19,10 +19,6 @@ use poise::{
     futures_util::StreamExt,
     serenity_prelude::{CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook},
 };
-
-const HELP: &str = "\
-Usage: gluemc <path>
-";
 
 type Error = eyre::Error;
 type Result<T, E = Error> = eyre::Result<T, E>;
@@ -39,6 +35,8 @@ static DEATH_MESSAGES: OnceLock<
         &'static [u8],
     )],
 > = OnceLock::new();
+
+static COMMAND_CHANNEL: OnceLock<flume::Sender<Box<[u8]>>> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug)]
 enum DeathMessageComponent {
@@ -180,17 +178,46 @@ async fn main() -> Result<()> {
         tx
     };
 
-    let mut pargs = pico_args::Arguments::from_env();
-    if pargs.contains(["-h", "--help"]) {
-        print!("{}", HELP);
-        std::process::exit(0);
+    let mut args = std::env::args();
+    let binary_name = args.next().unwrap_or_else(|| String::from("gluemc"));
+
+    let mut process = {
+        let Some(cmd_name) = args.next() else {
+            println!("Usage: {binary_name} <command>");
+            std::process::exit(1);
+        };
+
+        let mut process = tokio::process::Command::new(cmd_name);
+        for arg in args {
+            process.arg(arg);
+        }
+
+        process
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()?
+    };
+
+    let Some(stdout) = process.stdout.take() else {
+        bail!("Could not get child stdout");
+    };
+
+    if let Some(mut stdin) = process.stdin.take() {
+        let (tx, rx) = flume::unbounded();
+        COMMAND_CHANNEL.set(tx).unwrap();
+
+        tokio::task::spawn(async move {
+            while let Ok(msg) = rx.recv_async().await {
+                stdin.write_all(&msg).await?;
+                stdin.write_u8(b'\n').await?;
+                stdin.flush().await?;
+            }
+
+            Ok::<(), Error>(())
+        });
+    } else {
+        bail!("Could not get child stdin");
     }
-
-    let path = pargs
-        .free_from_os_str::<PathBuf, Infallible>(|s| Ok(PathBuf::from(s)))
-        .unwrap();
-
-    pargs.finish();
 
     let death_messages =
         reqwest::get("https://assets.mcasset.cloud/1.21.11/assets/minecraft/lang/en_us.json")
@@ -278,12 +305,7 @@ async fn main() -> Result<()> {
     let _ = DEATH_MESSAGES.get_or_init(|| Box::leak(death_messages));
 
     let log_ingester = tokio::task::spawn(async move {
-        let input = tokio::fs::OpenOptions::new()
-            .read(true)
-            .open(path)
-            .await
-            .unwrap();
-        let mut input = BufReader::new(input);
+        let mut input = BufReader::new(stdout);
         let mut buf = Vec::with_capacity(16384);
 
         while let Ok(n) = input.read_until(b'\n', &mut buf).await {
@@ -450,11 +472,17 @@ async fn main() -> Result<()> {
     let mut signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])?;
     if signals.next().await.is_some() {
         eprintln!("Stopping server.");
-        println!("stop");
+        command(*b"stop").await?;
+        let _ = process.wait().await;
     }
 
     bot.abort();
     log_ingester.abort();
 
+    Ok(())
+}
+
+pub async fn command(s: impl Into<Box<[u8]>>) -> Result<()> {
+    COMMAND_CHANNEL.get().unwrap().send_async(s.into()).await?;
     Ok(())
 }
