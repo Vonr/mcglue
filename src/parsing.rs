@@ -37,6 +37,9 @@ enum PartialLog<'src> {
         player: &'src [u8],
         advancement: &'src [u8],
     },
+    Starting {
+        version: &'src [u8],
+    },
     Death {
         victim: &'src [u8],
         attacker: &'src [u8],
@@ -55,6 +58,7 @@ pub enum Log<'src> {
     Join(JoinLog<'src>),
     Leave(LeaveLog<'src>),
     Advancement(AdvancementLog<'src>),
+    Starting(StartingLog<'src>),
     Death(DeathLog<'src>),
     Unknown(ShowLossyStr<'src>),
 }
@@ -62,12 +66,6 @@ pub enum Log<'src> {
 #[repr(transparent)]
 #[derive(Clone, PartialEq, Eq, Default)]
 pub struct ShowLossyStr<'a>(pub &'a [u8]);
-
-impl<'a> ShowLossyStr<'a> {
-    pub fn to_str_lossy(&self) -> Cow<'_, str> {
-        self.0.to_str_lossy()
-    }
-}
 
 impl Debug for ShowLossyStr<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -247,9 +245,25 @@ impl<'src> Log<'src> {
             .map_err(|e| Rich::custom(*e.span(), "Could not parse as advancement message"))
             .only_if_logger(LogLevel::Info, b"Server thread");
 
+        let starting = just::<_, _, LoggerParserExtra<'src>>(b"Starting minecraft server version ")
+            .ignore_then(
+                any::<'src, &'src [u8], LoggerParserExtra<'src>>()
+                    .repeated()
+                    .to_slice(),
+            )
+            .map(|version| PartialLog::Starting { version })
+            .only_if_logger(LogLevel::Info, b"Server thread");
+
         let death = custom::<_, &[u8], _, LoggerParserExtra<'src>>(move |inp| {
             let cursor = inp.cursor();
-            'death_message: for &(a, ar, b, br, c, cr, d) in DEATH_MESSAGES.get().unwrap().iter() {
+            let Some(death_messages) = DEATH_MESSAGES.get() else {
+                return Err(Rich::custom(
+                    inp.span_from(&inp.cursor()..),
+                    "Death messages not initialized",
+                ));
+            };
+
+            'death_message: for &(a, ar, b, br, c, cr, d) in death_messages.iter() {
                 let mut slice = inp.slice_from(&cursor..);
 
                 if !a.is_empty() {
@@ -342,7 +356,16 @@ impl<'src> Log<'src> {
             .to_slice()
             .map(|message| PartialLog::Generic { message });
 
-        let partial_logs = choice((chat, join, leave, advancement, list, death, generic));
+        let partial_logs = choice((
+            chat,
+            join,
+            leave,
+            advancement,
+            list,
+            starting,
+            death,
+            generic,
+        ));
 
         group((
             HmsTime::parser()
@@ -386,6 +409,10 @@ impl<'src> Log<'src> {
                         time,
                         player: ShowLossyStr(player),
                         advancement: ShowLossyStr(advancement),
+                    }),
+                    PartialLog::Starting { version } => Self::Starting(StartingLog {
+                        time,
+                        version: ShowLossyStr(version),
                     }),
                     PartialLog::Death {
                         victim,
@@ -442,6 +469,12 @@ pub struct AdvancementLog<'src> {
     pub time: HmsTime,
     pub player: ShowLossyStr<'src>,
     pub advancement: ShowLossyStr<'src>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StartingLog<'src> {
+    pub time: HmsTime,
+    pub version: ShowLossyStr<'src>,
 }
 
 #[derive(Clone, Debug)]
