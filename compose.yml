@@ -7,9 +7,13 @@ services:
       - "25565:25565"
     expose:
       - "25575"
+    env_file: .env
     environment:
       VERSION: "1.21.1"
       EULA: "TRUE"
       JVM_OPTS: "-XX:+UseCompactObjectHeaders -XX:+UseZGC"
+    entrypoint: /image/scripts/mcglue-entrypoint
     volumes:
       - ./test-server:/data
+      - ./mcglue-entrypoint:/image/scripts/mcglue-entrypoint
+      - ./target/debug/mcglue:/mcglue

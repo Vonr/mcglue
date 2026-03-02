@@ -13,9 +13,14 @@ Console logs are sent to the console channel, and messages sent there are execut
 ```sh
 mcglue <command>
 
-# Example (see test.sh)
+# Examples
 mcglue docker compose attach server
+
+# With custom entrypoint (see test.sh, compose.yml, mcglue-entrypoint)
+docker compose up
 ```
+
+See `test.sh`, `compose.yml`, and `mcglue-entrypoint` for a setup that uses [`itzg/docker-minecraft-server`](https://docker-minecraft-server.readthedocs.io/) via Docker Compose with a custom entrypoint.
 
 ### Environment Variables
 - `$DISCORD_BOT_TOKEN` should be set to a Discord bot token
