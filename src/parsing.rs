@@ -144,12 +144,7 @@ impl<'src> Log<'src> {
                     .at_least(1)
                     .to_slice()
                     .delimited_by(just(b'<'), just(b'>')),
-                any()
-                    .filter(|b| *b != b']')
-                    .repeated()
-                    .at_least(1)
-                    .delimited_by(just(b'['), just(b']'))
-                    .to_slice(),
+                just(b"[Server]".as_slice()),
             ))
             .then_ignore(just(b' ')),
             any().repeated().at_least(1).to_slice(),
