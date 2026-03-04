@@ -8,6 +8,13 @@ Messages from Discord are relayed to clients using the `/tellraw` command, while
 
 Console logs are sent to the console channel, and messages sent there are executed on the server as commands.
 
+## Installation
+
+mcglue provides automatically built binaries for certain targets in the [releases](https://github.com/Vonr/mcglue/releases).   
+They may be retrieved manually or with [cargo-binstall](https://github.com/cargo-bins/cargo-binstall) with `cargo binstall --git https://github.com/Vonr/mcglue mcglue`.
+
+You can choose to install from source with `cargo install --git https://github.com/Vonr/mcglue`
+
 ### Usage
 
 ```sh
