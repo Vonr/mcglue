@@ -17,7 +17,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use bstr::ByteSlice;
 use chumsky::prelude::*;
 use poise::serenity_prelude::{
-    CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook, colours, futures::StreamExt,
+    colours, futures::StreamExt, CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook,
 };
 
 type Error = eyre::Error;

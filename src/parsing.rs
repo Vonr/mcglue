@@ -20,7 +20,7 @@ enum PartialLog<'src> {
         message: &'src [u8],
     },
     Chat {
-        secure: bool,
+        secure: Option<bool>,
         sender: &'src [u8],
         message: &'src [u8],
     },
@@ -135,7 +135,8 @@ impl<'src> Log<'src> {
                 .delimited_by(just(b'['), just(b']'))
                 .or_not()
                 .map(|o| o.is_none())
-                .then_ignore(just(b' ')),
+                .then_ignore(just(b' '))
+                .or_not(),
             choice((
                 any()
                     .filter(|b| *b != b'>')
@@ -453,7 +454,7 @@ pub struct GenericLog<'src> {
 #[derive(Clone, Debug)]
 pub struct ChatLog<'src> {
     pub time: HmsTime,
-    pub secure: bool,
+    pub secure: Option<bool>,
     pub sender: ShowLossyStr<'src>,
     pub message: ShowLossyStr<'src>,
 }
