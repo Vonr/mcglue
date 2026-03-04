@@ -5,16 +5,16 @@ mod parsing;
 use crate::parsing::*;
 use async_signal::{Signal, Signals};
 use eyre::{bail, eyre};
+use rustyline::error::ReadlineError;
 use std::{
     borrow::Cow,
-    io::Write,
     process::Stdio,
     sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use bstr::{io::BufReadExt, ByteSlice};
+use bstr::ByteSlice;
 use chumsky::prelude::*;
 use poise::serenity_prelude::{
     colours, futures::StreamExt, CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook,
@@ -258,9 +258,10 @@ async fn main() -> Result<()> {
                 continue;
             }
 
-            log_to_console
-                .send_async(buf[..n].to_str_lossy().into())
-                .await?;
+            let s = buf[..n].to_str_lossy();
+            print!("{s}");
+
+            log_to_console.send_async(s.into()).await?;
 
             let parsed = {
                 let parser = Log::parser();
@@ -275,9 +276,6 @@ async fn main() -> Result<()> {
                     continue;
                 }
             };
-
-            println!("{log:?}");
-            std::io::stderr().flush()?;
 
             match &log {
                 Log::Chat(ChatLog {
@@ -535,15 +533,27 @@ async fn main() -> Result<()> {
     });
 
     let input = std::thread::spawn(|| {
-        let stdin = std::io::stdin().lock();
-        let mut reader = std::io::BufReader::new(stdin);
-        reader.for_byte_line(|line| {
-            if let Err(e) = command_sync(line) {
-                eprintln!("Error sending command: {e:?}");
-            }
+        let mut editor = rustyline::DefaultEditor::new().unwrap();
 
-            Ok(true)
-        })
+        loop {
+            match editor.readline("") {
+                Ok(line) => {
+                    let _ = editor.add_history_entry(line.as_str());
+                    if let Err(e) = command_sync(line.as_bytes()) {
+                        eprintln!("Error sending command: {e:?}");
+                    }
+                }
+                Err(ReadlineError::Interrupted) => {
+                    eprintln!("Received CTRL+C, exiting.");
+                    break;
+                }
+                Err(ReadlineError::Eof) => {
+                    eprintln!("Received CTRL+D, exiting.");
+                    break;
+                }
+                Err(e) => eprintln!("Error reading line: {e:?}"),
+            }
+        }
     });
 
     let mut signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])?;

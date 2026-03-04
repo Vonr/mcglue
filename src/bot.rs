@@ -52,7 +52,7 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
         .framework(framework)
         .await;
 
-    client.unwrap().start().await.unwrap();
+    client?.start().await?;
 
     Ok(())
 }
