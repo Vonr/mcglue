@@ -2,6 +2,9 @@
 name = "mcglue"
 version = "0.1.0"
 edition = "2024"
+license = "MPL-2.0"
+homepage = "https://github.com/Vonr/mcglue"
+repository = "https://github.com/Vonr/mcglue"
 
 [dependencies]
 async-signal = "0.2"
