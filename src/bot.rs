@@ -61,13 +61,12 @@ async fn event_handler(
     ctx: &serenity::Context,
     event: &serenity::FullEvent,
     _framework: poise::FrameworkContext<'_, Data, Error>,
-    _data: &Data,
+    data: &Data,
 ) -> Result<(), Error> {
     match event {
         serenity::FullEvent::Ready { data_about_bot, .. } => {
             eprintln!("Logged in as {}", data_about_bot.user.name);
-            _data
-                .bot_start_notifier
+            data.bot_start_notifier
                 .lock()
                 .take()
                 .unwrap()
@@ -97,7 +96,12 @@ async fn event_handler(
 
                 crate::command(format!(r#"tellraw @a {{"text":{:?}}}"#, content).as_bytes())
                     .await?;
-            } else if new_message.channel_id.get() == crate::env::discord_console_channel_id() {
+            } else if new_message.channel_id.get() == crate::env::discord_console_channel_id()
+                && new_message
+                    .member(&ctx.http)
+                    .await
+                    .is_ok_and(|m| m.roles.contains(&data.operator_role_id))
+            {
                 crate::command(new_message.content.as_bytes()).await?;
             }
         }
