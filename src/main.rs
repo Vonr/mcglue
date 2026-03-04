@@ -3,21 +3,21 @@ mod interface;
 mod parsing;
 
 use crate::parsing::*;
+use async_signal::{Signal, Signals};
 use eyre::{bail, eyre};
 use std::{
     borrow::Cow,
+    io::Write,
     process::Stdio,
     sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use async_signal::{Signal, Signals};
-use bstr::ByteSlice;
+use bstr::{io::BufReadExt, ByteSlice};
 use chumsky::prelude::*;
-use poise::{
-    futures_util::StreamExt,
-    serenity_prelude::{CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook, colours},
+use poise::serenity_prelude::{
+    colours, futures::StreamExt, CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook,
 };
 
 type Error = eyre::Error;
@@ -77,6 +77,8 @@ mod env {
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
+    console_subscriber::init();
+
     let _ = dotenvy::dotenv();
 
     if env::any_set() {
@@ -168,7 +170,6 @@ async fn main() -> Result<()> {
                 if let Ok(msg) = rx.try_recv() {
                     buf.push_str(&msg);
                     last_message = Instant::now();
-                    continue;
                 }
 
                 tokio::task::yield_now().await;
@@ -184,6 +185,11 @@ async fn main() -> Result<()> {
 
     let mut args = std::env::args();
     let binary_name = args.next().unwrap_or_else(|| String::from("gluemc"));
+
+    eprintln!("Starting Discord bot");
+    let (bot_started_tx, bot_started_rx) = tokio::sync::oneshot::channel::<()>();
+    let bot = tokio::task::spawn(async move { bot::start_bot(bot_started_tx).await.unwrap() });
+    bot_started_rx.await?;
 
     eprintln!("Starting server");
     webhook
@@ -222,22 +228,23 @@ async fn main() -> Result<()> {
         bail!("Could not get child stdout");
     };
 
-    if let Some(mut stdin) = process.stdin.take() {
-        let (tx, rx) = flume::unbounded();
-        COMMAND_CHANNEL.set(tx).unwrap();
+    let command_sender = match process.stdin.take() {
+        Some(mut stdin) => {
+            let (tx, rx) = flume::unbounded();
+            COMMAND_CHANNEL.set(tx).unwrap();
 
-        tokio::task::spawn(async move {
-            while let Ok(msg) = rx.recv_async().await {
-                stdin.write_all(&msg).await?;
-                stdin.write_u8(b'\n').await?;
-                stdin.flush().await?;
-            }
+            tokio::task::spawn(async move {
+                while let Ok(msg) = rx.recv_async().await {
+                    stdin.write_all(&msg).await?;
+                    stdin.write_u8(b'\n').await?;
+                    stdin.flush().await?;
+                }
 
-            Ok::<(), Error>(())
-        });
-    } else {
-        bail!("Could not get child stdin");
-    }
+                Ok::<(), Error>(())
+            })
+        }
+        _ => bail!("Could not get child stdin"),
+    };
 
     let log_ingester = tokio::task::spawn(async move {
         let http = Http::new(&token);
@@ -269,7 +276,9 @@ async fn main() -> Result<()> {
                 }
             };
 
-            eprintln!("{log:?}");
+            println!("{log:?}");
+            std::io::stderr().flush()?;
+
             match &log {
                 Log::Chat(ChatLog {
                     sender, message, ..
@@ -379,102 +388,109 @@ async fn main() -> Result<()> {
                         .await;
                 }
                 Log::Starting(StartingLog { version, .. }) => {
-                    let death_messages =
-                        async move {
-                            Ok::<_, Error>(reqwest::get(format!(
-                            "https://assets.mcasset.cloud/{}/assets/minecraft/lang/en_us.json",
-                            version.to_str_lossy()
-                        ))
-                        .await?
-                        .bytes()
-                        .await?
-                        .split(|b| *b == b'\n')
-                        .filter_map(|b| {
-                            if b.starts_with(br#"  "death."#) {
-                                b.split_once_str(br#": ""#)
-                                    .map(|(_, snd)| &snd[..snd.rfind(b"\"").unwrap()])
-                                    .and_then(|s| {
-                                        let victim = s.find(b"%1$s")?;
+                    let death_messages = async move {
+                        Ok::<_, Error>(
+                            reqwest::get(format!(
+                                "https://assets.mcasset.cloud/{}/assets/minecraft/lang/en_us.json",
+                                version.to_str_lossy()
+                            ))
+                            .await?
+                            .bytes()
+                            .await?
+                            .split(|b| *b == b'\n')
+                            .filter_map(|b| {
+                                if b.starts_with(br#"  "death."#) {
+                                    b.split_once_str(br#": ""#)
+                                        .map(|(_, snd)| &snd[..snd.rfind(b"\"").unwrap()])
+                                        .and_then(|s| {
+                                            let victim = s.find(b"%1$s")?;
 
-                                        let mut first = (victim, DeathMessageComponent::Victim);
-                                        let mut second = (s.len(), DeathMessageComponent::Empty);
-                                        let mut third = (s.len(), DeathMessageComponent::Empty);
+                                            let mut first = (victim, DeathMessageComponent::Victim);
+                                            let mut second =
+                                                (s.len(), DeathMessageComponent::Empty);
+                                            let mut third = (s.len(), DeathMessageComponent::Empty);
 
-                                        if let Some(attacker) = s.find(b"%2$s") {
-                                            if attacker < victim {
-                                                second = first;
-                                                first = (attacker, DeathMessageComponent::Attacker);
-                                            } else {
-                                                second =
-                                                    (attacker, DeathMessageComponent::Attacker);
-                                            }
-                                        }
-
-                                        if let Some(weapon) = s.find(b"%3$s") {
-                                            if matches!(second.1, DeathMessageComponent::Empty) {
-                                                if weapon < first.0 {
+                                            if let Some(attacker) = s.find(b"%2$s") {
+                                                if attacker < victim {
                                                     second = first;
-                                                    first = (weapon, DeathMessageComponent::Weapon);
+                                                    first =
+                                                        (attacker, DeathMessageComponent::Attacker);
                                                 } else {
                                                     second =
-                                                        (weapon, DeathMessageComponent::Weapon);
-                                                }
-                                            } else {
-                                                if weapon < first.0 {
-                                                    third = second;
-                                                    second = first;
-                                                    first = (weapon, DeathMessageComponent::Weapon);
-                                                } else if weapon < second.0 {
-                                                    third = second;
-                                                    second =
-                                                        (weapon, DeathMessageComponent::Weapon);
-                                                } else {
-                                                    third = (weapon, DeathMessageComponent::Weapon);
+                                                        (attacker, DeathMessageComponent::Attacker);
                                                 }
                                             }
-                                        }
 
-                                        let ret = (
-                                            Box::leak(Box::<[u8]>::from(&s[..first.0]))
-                                                as &'static [u8],
-                                            first.1,
-                                            if first.0 + 4 < s.len() {
+                                            if let Some(weapon) = s.find(b"%3$s") {
+                                                if matches!(second.1, DeathMessageComponent::Empty)
                                                 {
+                                                    if weapon < first.0 {
+                                                        second = first;
+                                                        first =
+                                                            (weapon, DeathMessageComponent::Weapon);
+                                                    } else {
+                                                        second =
+                                                            (weapon, DeathMessageComponent::Weapon);
+                                                    }
+                                                } else {
+                                                    if weapon < first.0 {
+                                                        third = second;
+                                                        second = first;
+                                                        first =
+                                                            (weapon, DeathMessageComponent::Weapon);
+                                                    } else if weapon < second.0 {
+                                                        third = second;
+                                                        second =
+                                                            (weapon, DeathMessageComponent::Weapon);
+                                                    } else {
+                                                        third =
+                                                            (weapon, DeathMessageComponent::Weapon);
+                                                    }
+                                                }
+                                            }
+
+                                            let ret = (
+                                                Box::leak(Box::<[u8]>::from(&s[..first.0]))
+                                                    as &'static [u8],
+                                                first.1,
+                                                if first.0 + 4 < s.len() {
+                                                    {
+                                                        Box::leak(Box::<[u8]>::from(
+                                                            &s[first.0 + 4..second.0],
+                                                        ))
+                                                            as &'static [u8]
+                                                    }
+                                                } else {
+                                                    b"".as_slice()
+                                                },
+                                                second.1,
+                                                if second.0 + 4 < s.len() {
                                                     Box::leak(Box::<[u8]>::from(
-                                                        &s[first.0 + 4..second.0],
+                                                        &s[second.0 + 4..third.0],
                                                     ))
                                                         as &'static [u8]
-                                                }
-                                            } else {
-                                                b"".as_slice()
-                                            },
-                                            second.1,
-                                            if second.0 + 4 < s.len() {
-                                                Box::leak(Box::<[u8]>::from(
-                                                    &s[second.0 + 4..third.0],
-                                                ))
-                                                    as &'static [u8]
-                                            } else {
-                                                b"".as_slice()
-                                            },
-                                            third.1,
-                                            if third.0 + 4 < s.len() {
-                                                Box::leak(Box::<[u8]>::from(&s[third.0 + 4..]))
-                                                    as &'static [u8]
-                                            } else {
-                                                b"".as_slice()
-                                            },
-                                        );
+                                                } else {
+                                                    b"".as_slice()
+                                                },
+                                                third.1,
+                                                if third.0 + 4 < s.len() {
+                                                    Box::leak(Box::<[u8]>::from(&s[third.0 + 4..]))
+                                                        as &'static [u8]
+                                                } else {
+                                                    b"".as_slice()
+                                                },
+                                            );
 
-                                        Some(ret)
-                                    })
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Box<_>>())
-                        }
-                        .await;
+                                            Some(ret)
+                                        })
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Box<_>>(),
+                        )
+                    }
+                    .await;
 
                     if let Ok(death_messages) = death_messages {
                         let len = death_messages.len();
@@ -518,10 +534,35 @@ async fn main() -> Result<()> {
         Ok::<(), Error>(())
     });
 
-    let bot = tokio::task::spawn(async move { bot::start_bot().await.unwrap() });
+    let input = std::thread::spawn(|| {
+        let stdin = std::io::stdin().lock();
+        let mut reader = std::io::BufReader::new(stdin);
+        reader.for_byte_line(|line| {
+            if let Err(e) = command_sync(line) {
+                eprintln!("Error sending command: {e:?}");
+            }
+
+            Ok(true)
+        })
+    });
 
     let mut signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])?;
-    if signals.next().await.is_some() {
+    let signal_handler = tokio::task::spawn(async move {
+        while signals.next().await.is_none() {
+            tokio::task::yield_now().await;
+        }
+
+        eprintln!("Received exit signal");
+    });
+
+    while !input.is_finished()
+        && !signal_handler.is_finished()
+        && !process.try_wait().is_ok_and(|o| o.is_some())
+    {
+        tokio::task::yield_now().await;
+    }
+
+    if !process.try_wait().is_ok_and(|o| o.is_some()) {
         eprintln!("Stopping server");
         webhook
             .execute(
@@ -541,13 +582,22 @@ async fn main() -> Result<()> {
         let _ = process.wait().await;
     }
 
-    bot.abort();
+    eprintln!("Stopping wrapper");
+
     log_ingester.abort();
+    command_sender.abort();
+    bot.abort();
+    signal_handler.abort();
 
     Ok(())
 }
 
 pub async fn command(s: impl Into<Box<[u8]>>) -> Result<()> {
     COMMAND_CHANNEL.get().unwrap().send_async(s.into()).await?;
+    Ok(())
+}
+
+pub fn command_sync(s: impl Into<Box<[u8]>>) -> Result<()> {
+    COMMAND_CHANNEL.get().unwrap().send(s.into())?;
     Ok(())
 }

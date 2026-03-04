@@ -7,6 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use parking_lot::Mutex;
 use poise::serenity_prelude::{self as serenity, CacheHttp, GatewayIntents, RoleId};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -14,13 +15,14 @@ use uuid::Uuid;
 use crate::{Error, Result};
 
 pub struct Data {
+    pub bot_start_notifier: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
     pub server_directory: Box<Path>,
     pub operator_role_id: RoleId,
 }
 
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 
-pub async fn start_bot() -> Result<()> {
+pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> Result<()> {
     let token = crate::env::discord_bot_token();
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::MESSAGE_CONTENT
@@ -38,6 +40,7 @@ pub async fn start_bot() -> Result<()> {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
+                    bot_start_notifier: Mutex::new(Some(bot_start_notifier)),
                     server_directory: PathBuf::from(crate::env::server_directory()).into(),
                     operator_role_id: crate::env::discord_operator_role_id().into(),
                 })
@@ -63,32 +66,39 @@ async fn event_handler(
     match event {
         serenity::FullEvent::Ready { data_about_bot, .. } => {
             eprintln!("Logged in as {}", data_about_bot.user.name);
+            _data
+                .bot_start_notifier
+                .lock()
+                .take()
+                .unwrap()
+                .send(())
+                .unwrap();
         }
-        serenity::FullEvent::Message { new_message } => {
-            if !new_message.author.bot && new_message.thread.is_none() {
-                if new_message.channel_id.get() == crate::env::discord_channel_id() {
-                    const PREFIX: &str = "[Discord] ";
-                    let author = new_message
-                        .author_nick(ctx.http())
-                        .await
-                        .map(Cow::Owned)
-                        .unwrap_or_else(|| new_message.author.display_name().into());
+        serenity::FullEvent::Message { new_message }
+            if !new_message.author.bot && new_message.thread.is_none() =>
+        {
+            if new_message.channel_id.get() == crate::env::discord_channel_id() {
+                const PREFIX: &str = "[Discord] ";
+                let author = new_message
+                    .author_nick(ctx.http())
+                    .await
+                    .map(Cow::Owned)
+                    .unwrap_or_else(|| new_message.author.display_name().into());
 
-                    let mut content = String::with_capacity(
-                        new_message.content.len() + PREFIX.len() + author.len() + 3,
-                    );
+                let mut content = String::with_capacity(
+                    new_message.content.len() + PREFIX.len() + author.len() + 3,
+                );
 
-                    content.push_str(PREFIX);
-                    content.push('<');
-                    content.push_str(&author);
-                    content.push_str("> ");
-                    content.push_str(&new_message.content);
+                content.push_str(PREFIX);
+                content.push('<');
+                content.push_str(&author);
+                content.push_str("> ");
+                content.push_str(&new_message.content);
 
-                    crate::command(format!(r#"tellraw @a {{"text":{:?}}}"#, content).as_bytes())
-                        .await?;
-                } else if new_message.channel_id.get() == crate::env::discord_console_channel_id() {
-                    crate::command(new_message.content.as_bytes()).await?;
-                }
+                crate::command(format!(r#"tellraw @a {{"text":{:?}}}"#, content).as_bytes())
+                    .await?;
+            } else if new_message.channel_id.get() == crate::env::discord_console_channel_id() {
+                crate::command(new_message.content.as_bytes()).await?;
             }
         }
         _ => {}

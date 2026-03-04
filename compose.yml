@@ -2,7 +2,7 @@ services:
   server:
     image: itzg/minecraft-server:java25
     stdin_open: true
-    tty: false
+    tty: true
     ports:
       - "25565:25565"
     expose:
