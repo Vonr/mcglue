@@ -17,7 +17,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use bstr::ByteSlice;
 use chumsky::prelude::*;
 use poise::serenity_prelude::{
-    colours, futures::StreamExt, CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook,
+    CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook, colours, futures::StreamExt,
 };
 
 type Error = eyre::Error;
@@ -77,7 +77,6 @@ mod env {
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
-    console_subscriber::init();
 
     let _ = dotenvy::dotenv();
 
@@ -104,7 +103,9 @@ async fn main() -> Result<()> {
             let mut buf = String::with_capacity(4096);
 
             loop {
-                if Instant::now().duration_since(last_message) > Duration::from_millis(100) {
+                if !buf.is_empty()
+                    && Instant::now().duration_since(last_message) > Duration::from_millis(100)
+                {
                     let s = buf.chars().collect::<Vec<_>>();
                     let mut s = s.as_slice();
 

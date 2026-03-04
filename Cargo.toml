@@ -9,7 +9,6 @@ bstr = "1"
 btoi = "0.5"
 chumsky = "0.12"
 color-eyre = "0.6"
-console-subscriber = { version = "0.5.0", features = ["parking_lot"] }
 dotenvy = "0.15"
 eyre = "0.6"
 fastnbt = "2"
