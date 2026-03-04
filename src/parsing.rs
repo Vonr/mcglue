@@ -265,6 +265,12 @@ impl<'src> Log<'src> {
 
             'death_message: for &(a, ar, b, br, c, cr, d) in death_messages.iter() {
                 let mut slice = inp.slice_from(&cursor..);
+                if slice.is_empty() {
+                    return Err(Rich::custom(
+                        inp.span_from(&inp.cursor()..),
+                        "Could not parse empty message as a death message",
+                    ));
+                }
 
                 if !a.is_empty() {
                     let Ok(span) = just::<_, _, LoggerParserExtra<'src>>(a)
