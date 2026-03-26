@@ -17,7 +17,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use bstr::ByteSlice;
 use chumsky::prelude::*;
 use poise::serenity_prelude::{
-    colours, futures::StreamExt, CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook,
+    CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook, colours, futures::StreamExt,
 };
 
 type Error = eyre::Error;
@@ -92,13 +92,15 @@ async fn main() -> Result<()> {
     let http = Http::new(&token);
     let webhook = Webhook::from_url(&http, &crate::env::discord_webhook_url()).await?;
 
+    let mut join_set = tokio::task::JoinSet::<Result<()>>::new();
+
     let log_to_console = {
         let (tx, rx) = flume::unbounded::<Box<str>>();
+        let http = Http::new(&token);
         let console_webhook =
             Webhook::from_url(&http, &crate::env::discord_console_webhook_url()).await?;
-        let http = Http::new(&token);
 
-        tokio::spawn(async move {
+        join_set.spawn(async move {
             let mut last_message = Instant::now();
             let mut buf = String::with_capacity(4096);
 
@@ -189,7 +191,7 @@ async fn main() -> Result<()> {
 
     eprintln!("Starting Discord bot");
     let (bot_started_tx, bot_started_rx) = tokio::sync::oneshot::channel::<()>();
-    let bot = tokio::task::spawn(async move { bot::start_bot(bot_started_tx).await.unwrap() });
+    join_set.spawn(async move { bot::start_bot(bot_started_tx).await });
     bot_started_rx.await?;
 
     eprintln!("Starting server");
@@ -229,25 +231,24 @@ async fn main() -> Result<()> {
         bail!("Could not get child stdout");
     };
 
-    let command_sender = match process.stdin.take() {
-        Some(mut stdin) => {
-            let (tx, rx) = flume::unbounded();
-            COMMAND_CHANNEL.set(tx).unwrap();
-
-            tokio::task::spawn(async move {
-                while let Ok(msg) = rx.recv_async().await {
-                    stdin.write_all(&msg).await?;
-                    stdin.write_u8(b'\n').await?;
-                    stdin.flush().await?;
-                }
-
-                Ok::<(), Error>(())
-            })
-        }
-        _ => bail!("Could not get child stdin"),
+    let Some(mut stdin) = process.stdin.take() else {
+        bail!("Could not get child stdin")
     };
 
-    let log_ingester = tokio::task::spawn(async move {
+    let (tx, rx) = flume::unbounded();
+    COMMAND_CHANNEL.set(tx).unwrap();
+
+    join_set.spawn(async move {
+        while let Ok(msg) = rx.recv_async().await {
+            stdin.write_all(&msg).await?;
+            stdin.write_u8(b'\n').await?;
+            stdin.flush().await?;
+        }
+
+        Ok(())
+    });
+
+    join_set.spawn(async move {
         let http = Http::new(&token);
         let webhook = Webhook::from_url(&http, &crate::env::discord_webhook_url()).await?;
 
@@ -558,12 +559,13 @@ async fn main() -> Result<()> {
     });
 
     let mut signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])?;
-    let signal_handler = tokio::task::spawn(async move {
+    let signal_handler = join_set.spawn(async move {
         while signals.next().await.is_none() {
             tokio::task::yield_now().await;
         }
 
         eprintln!("Received exit signal");
+        Ok(())
     });
 
     while !input.is_finished()
@@ -595,10 +597,7 @@ async fn main() -> Result<()> {
 
     eprintln!("Stopping wrapper");
 
-    log_ingester.abort();
-    command_sender.abort();
-    bot.abort();
-    signal_handler.abort();
+    join_set.abort_all();
 
     Ok(())
 }
