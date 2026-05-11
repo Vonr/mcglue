@@ -39,7 +39,6 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
                     match error {
                         FrameworkError::Command { ctx, error, .. } => {
                             let error = error.to_string();
-                            eprintln!("An error occured in a command: {}", error);
                             if let Err(e) = ctx
                                 .send(CreateReply::default().ephemeral(true).content(error))
                                 .await
