@@ -517,7 +517,8 @@ async fn main() -> Result<()> {
 
                         let mut death_messages = Vec::new();
 
-                        if let Ok(mod_paths) = jar::files(&PathBuf::from("mods")) {
+                        let mods_folder = server_directory().join("mods");
+                        if let Ok(mod_paths) = jar::files(&mods_folder) {
                             for path in mod_paths {
                                 let file = OpenOptions::new().read(true).open(&path)?;
                                 let mut archive = ZipArchive::new(file)?;
