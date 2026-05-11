@@ -1,5 +1,6 @@
 mod bot;
 mod interface;
+mod jar;
 mod parsing;
 
 use crate::parsing::*;
@@ -8,11 +9,15 @@ use eyre::{bail, eyre};
 use rustyline::error::ReadlineError;
 use std::{
     borrow::Cow,
+    fs::OpenOptions,
+    io::Read,
+    path::PathBuf,
     process::Stdio,
     sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use zip::ZipArchive;
 
 use bstr::ByteSlice;
 use chumsky::prelude::*;
@@ -71,7 +76,18 @@ mod env {
 
         server_directory, "SERVER_DIRECTORY", String,
         "SERVER_DIRECTORY should be set to the path to the server's root directory";
+
+        language?, "GAME_LANGUAGE", String,
+        r#"GAME_LANGUAGE ("en_us" by default) should be set to the language the server is running"#;
     }
+}
+
+pub fn server_directory() -> PathBuf {
+    PathBuf::from(crate::env::server_directory())
+}
+
+pub fn language() -> String {
+    crate::env::language().unwrap_or_else(|| String::from("en_us"))
 }
 
 #[tokio::main]
@@ -388,117 +404,159 @@ async fn main() -> Result<()> {
                         .await;
                 }
                 Log::Starting(StartingLog { version, .. }) => {
-                    let death_messages = async move {
-                        Ok::<_, Error>(
-                            reqwest::get(format!(
-                                "https://assets.mcasset.cloud/{}/assets/minecraft/lang/en_us.json",
-                                version.to_str_lossy()
+                    #[allow(clippy::type_complexity)]
+                    fn slice_to_lang(
+                        s: &[u8],
+                    ) -> impl Iterator<
+                        Item = (
+                            &'static [u8],
+                            DeathMessageComponent,
+                            &'static [u8],
+                            DeathMessageComponent,
+                            &'static [u8],
+                            DeathMessageComponent,
+                            &'static [u8],
+                        ),
+                    > {
+                        s.split(|b| *b == b'\n').filter_map(|b| {
+                            if b.starts_with(br#"  "death."#) {
+                                b.split_once_str(br#": ""#)
+                                    .map(|(_, snd)| &snd[..snd.rfind(b"\"").unwrap()])
+                                    .and_then(|s| {
+                                        let victim = s.find(b"%1$s")?;
+
+                                        let mut first = (victim, DeathMessageComponent::Victim);
+                                        let mut second = (s.len(), DeathMessageComponent::Empty);
+                                        let mut third = (s.len(), DeathMessageComponent::Empty);
+
+                                        if let Some(attacker) = s.find(b"%2$s") {
+                                            if attacker < victim {
+                                                second = first;
+                                                first = (attacker, DeathMessageComponent::Attacker);
+                                            } else {
+                                                second =
+                                                    (attacker, DeathMessageComponent::Attacker);
+                                            }
+                                        }
+
+                                        if let Some(weapon) = s.find(b"%3$s") {
+                                            if matches!(second.1, DeathMessageComponent::Empty) {
+                                                if weapon < first.0 {
+                                                    second = first;
+                                                    first = (weapon, DeathMessageComponent::Weapon);
+                                                } else {
+                                                    second =
+                                                        (weapon, DeathMessageComponent::Weapon);
+                                                }
+                                            } else {
+                                                if weapon < first.0 {
+                                                    third = second;
+                                                    second = first;
+                                                    first = (weapon, DeathMessageComponent::Weapon);
+                                                } else if weapon < second.0 {
+                                                    third = second;
+                                                    second =
+                                                        (weapon, DeathMessageComponent::Weapon);
+                                                } else {
+                                                    third = (weapon, DeathMessageComponent::Weapon);
+                                                }
+                                            }
+                                        }
+
+                                        let ret = (
+                                            Box::leak(Box::<[u8]>::from(&s[..first.0]))
+                                                as &'static [u8],
+                                            first.1,
+                                            if first.0 + 4 < s.len() {
+                                                {
+                                                    Box::leak(Box::<[u8]>::from(
+                                                        &s[first.0 + 4..second.0],
+                                                    ))
+                                                        as &'static [u8]
+                                                }
+                                            } else {
+                                                b"".as_slice()
+                                            },
+                                            second.1,
+                                            if second.0 + 4 < s.len() {
+                                                Box::leak(Box::<[u8]>::from(
+                                                    &s[second.0 + 4..third.0],
+                                                ))
+                                                    as &'static [u8]
+                                            } else {
+                                                b"".as_slice()
+                                            },
+                                            third.1,
+                                            if third.0 + 4 < s.len() {
+                                                Box::leak(Box::<[u8]>::from(&s[third.0 + 4..]))
+                                                    as &'static [u8]
+                                            } else {
+                                                b"".as_slice()
+                                            },
+                                        );
+
+                                        Some(ret)
+                                    })
+                            } else {
+                                None
+                            }
+                        })
+                    }
+
+                    let version = version.to_str_lossy().into_owned();
+
+                    tokio::spawn(async move {
+                        let lang_file_name = {
+                            let mut name = language();
+                            name.push_str(".json");
+                            name
+                        };
+
+                        eprintln!("Looking for language files named {}", lang_file_name);
+                        let mut buf = Vec::new();
+
+                        let mut death_messages = Vec::new();
+
+                        if let Ok(mod_paths) = jar::files(&PathBuf::from("mods")) {
+                            for path in mod_paths {
+                                let file = OpenOptions::new().read(true).open(&path)?;
+                                let mut archive = ZipArchive::new(file)?;
+
+                                for i in 0..archive.len() {
+                                    let mut file = archive.by_index(i)?;
+
+                                    if !file.is_file() {
+                                        continue;
+                                    }
+
+                                    if let Some(name) = file.enclosed_name()
+                                        && name.file_name().is_some_and(|n| *n == *lang_file_name)
+                                    {
+                                        buf.clear();
+                                        file.read_to_end(&mut buf)?;
+                                        for entry in slice_to_lang(&buf) {
+                                            death_messages.push(entry);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        slice_to_lang(
+                            &reqwest::get(format!(
+                                "https://assets.mcasset.cloud/{version}/assets/minecraft/lang/{lang_file_name}"
                             ))
                             .await?
                             .bytes()
-                            .await?
-                            .split(|b| *b == b'\n')
-                            .filter_map(|b| {
-                                if b.starts_with(br#"  "death."#) {
-                                    b.split_once_str(br#": ""#)
-                                        .map(|(_, snd)| &snd[..snd.rfind(b"\"").unwrap()])
-                                        .and_then(|s| {
-                                            let victim = s.find(b"%1$s")?;
+                            .await?,
+                        ).for_each(|e| death_messages.push(e));
 
-                                            let mut first = (victim, DeathMessageComponent::Victim);
-                                            let mut second =
-                                                (s.len(), DeathMessageComponent::Empty);
-                                            let mut third = (s.len(), DeathMessageComponent::Empty);
-
-                                            if let Some(attacker) = s.find(b"%2$s") {
-                                                if attacker < victim {
-                                                    second = first;
-                                                    first =
-                                                        (attacker, DeathMessageComponent::Attacker);
-                                                } else {
-                                                    second =
-                                                        (attacker, DeathMessageComponent::Attacker);
-                                                }
-                                            }
-
-                                            if let Some(weapon) = s.find(b"%3$s") {
-                                                if matches!(second.1, DeathMessageComponent::Empty)
-                                                {
-                                                    if weapon < first.0 {
-                                                        second = first;
-                                                        first =
-                                                            (weapon, DeathMessageComponent::Weapon);
-                                                    } else {
-                                                        second =
-                                                            (weapon, DeathMessageComponent::Weapon);
-                                                    }
-                                                } else {
-                                                    if weapon < first.0 {
-                                                        third = second;
-                                                        second = first;
-                                                        first =
-                                                            (weapon, DeathMessageComponent::Weapon);
-                                                    } else if weapon < second.0 {
-                                                        third = second;
-                                                        second =
-                                                            (weapon, DeathMessageComponent::Weapon);
-                                                    } else {
-                                                        third =
-                                                            (weapon, DeathMessageComponent::Weapon);
-                                                    }
-                                                }
-                                            }
-
-                                            let ret = (
-                                                Box::leak(Box::<[u8]>::from(&s[..first.0]))
-                                                    as &'static [u8],
-                                                first.1,
-                                                if first.0 + 4 < s.len() {
-                                                    {
-                                                        Box::leak(Box::<[u8]>::from(
-                                                            &s[first.0 + 4..second.0],
-                                                        ))
-                                                            as &'static [u8]
-                                                    }
-                                                } else {
-                                                    b"".as_slice()
-                                                },
-                                                second.1,
-                                                if second.0 + 4 < s.len() {
-                                                    Box::leak(Box::<[u8]>::from(
-                                                        &s[second.0 + 4..third.0],
-                                                    ))
-                                                        as &'static [u8]
-                                                } else {
-                                                    b"".as_slice()
-                                                },
-                                                third.1,
-                                                if third.0 + 4 < s.len() {
-                                                    Box::leak(Box::<[u8]>::from(&s[third.0 + 4..]))
-                                                        as &'static [u8]
-                                                } else {
-                                                    b"".as_slice()
-                                                },
-                                            );
-
-                                            Some(ret)
-                                        })
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect::<Box<_>>(),
-                        )
-                    }
-                    .await;
-
-                    if let Ok(death_messages) = death_messages {
                         let len = death_messages.len();
-                        let _ = DEATH_MESSAGES.get_or_init(|| Box::leak(death_messages));
+                        let _ = DEATH_MESSAGES.get_or_init(|| Box::leak(death_messages.into()));
                         eprintln!("Initialized {} death messages.", len);
-                    } else {
-                        eprintln!("Failed to initialize death messages.");
-                    }
+
+                        Ok::<_, Error>(())
+                    });
                 }
                 Log::Death(DeathLog { victim, .. }) => {
                     let sender: &str = &victim.to_str_lossy();

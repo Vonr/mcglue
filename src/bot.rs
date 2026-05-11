@@ -1,11 +1,7 @@
 mod crash;
 mod tpo;
 
-use std::{
-    borrow::Cow,
-    fmt::Display,
-    path::{Path, PathBuf},
-};
+use std::{borrow::Cow, fmt::Display, path::Path};
 
 use parking_lot::Mutex;
 use poise::serenity_prelude::{self as serenity, CacheHttp, GatewayIntents, RoleId};
@@ -41,7 +37,7 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {
                     bot_start_notifier: Mutex::new(Some(bot_start_notifier)),
-                    server_directory: PathBuf::from(crate::env::server_directory()).into(),
+                    server_directory: crate::server_directory().into(),
                     operator_role_id: crate::env::discord_operator_role_id().into(),
                 })
             })
