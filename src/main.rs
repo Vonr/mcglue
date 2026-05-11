@@ -11,7 +11,7 @@ use std::{
     borrow::Cow,
     fs::OpenOptions,
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Stdio,
     sync::{Arc, OnceLock},
     time::{Duration, Instant},
@@ -669,4 +669,19 @@ pub async fn command(s: impl Into<Box<[u8]>>) -> Result<()> {
 pub fn command_sync(s: impl Into<Box<[u8]>>) -> Result<()> {
     COMMAND_CHANNEL.get().unwrap().send(s.into())?;
     Ok(())
+}
+
+pub trait SafeJoin {
+    fn safe_join<P: AsRef<Path>>(&self, path: P) -> Result<PathBuf>;
+}
+
+impl SafeJoin for Path {
+    fn safe_join<P: AsRef<Path>>(&self, path: P) -> Result<PathBuf> {
+        let new = self.join(path).canonicalize()?;
+        if !new.starts_with(self.canonicalize()?) {
+            bail!("Attempted traversal above root {self:?}");
+        }
+
+        Ok(new)
+    }
 }

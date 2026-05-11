@@ -143,6 +143,7 @@ pub async fn tpo(
 
     ctx.send(
         CreateReply::default()
+            .ephemeral(true)
             .content(format!(
                 "Teleported {} to {} {} {} in {}. The unmodified player data has been attached as a backup.",
                 uuid.as_hyphenated(),

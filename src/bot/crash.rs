@@ -4,11 +4,11 @@ use std::fs;
 use std::{fs::OpenOptions, io::Read};
 
 use super::Context;
-use crate::Error;
+use crate::Result;
 
 /// Get the latest crash log
 #[poise::command(slash_command, guild_only, check = "super::is_operator")]
-pub async fn crash(ctx: Context<'_>) -> Result<(), Error> {
+pub async fn crash(ctx: Context<'_>) -> Result<()> {
     let path = ctx.data().server_directory.join("crash-reports");
 
     let (name, bytes) = tokio::task::spawn_blocking(move || {
@@ -41,8 +41,12 @@ pub async fn crash(ctx: Context<'_>) -> Result<(), Error> {
     })
     .await??;
 
-    ctx.send(CreateReply::default().attachment(CreateAttachment::bytes(bytes, name)))
-        .await?;
+    ctx.send(
+        CreateReply::default()
+            .ephemeral(true)
+            .attachment(CreateAttachment::bytes(bytes, name)),
+    )
+    .await?;
 
     Ok(())
 }

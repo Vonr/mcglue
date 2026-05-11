@@ -1,10 +1,14 @@
 mod crash;
+mod download;
 mod tpo;
 
 use std::{borrow::Cow, fmt::Display, path::Path};
 
 use parking_lot::Mutex;
-use poise::serenity_prelude::{self as serenity, CacheHttp, GatewayIntents, RoleId};
+use poise::{
+    CreateReply, FrameworkError,
+    serenity_prelude::{self as serenity, CacheHttp, GatewayIntents, RoleId},
+};
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -26,9 +30,30 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![crash::crash(), tpo::tpo()],
+            commands: vec![crash::crash(), tpo::tpo(), download::download()],
             event_handler: |ctx, event, framework, data| {
                 Box::pin(event_handler(ctx, event, framework, data))
+            },
+            on_error: |error| {
+                Box::pin(async move {
+                    match error {
+                        FrameworkError::Command { ctx, error, .. } => {
+                            let error = error.to_string();
+                            eprintln!("An error occured in a command: {}", error);
+                            if let Err(e) = ctx
+                                .send(CreateReply::default().ephemeral(true).content(error))
+                                .await
+                            {
+                                eprintln!("Error while handling bot error: {}", e);
+                            }
+                        }
+                        error => {
+                            if let Err(e) = poise::builtins::on_error(error).await {
+                                eprintln!("Error while handling bot error: {}", e);
+                            }
+                        }
+                    }
+                })
             },
             ..Default::default()
         })
@@ -143,7 +168,11 @@ pub async fn is_operator(ctx: Context<'_>) -> Result<bool> {
         Ok(true)
     } else {
         let _ = ctx
-            .reply("You do not have the required role to run this command.")
+            .send(
+                CreateReply::default()
+                    .ephemeral(true)
+                    .content("You do not have the required role to run this command."),
+            )
             .await;
 
         Ok(false)
