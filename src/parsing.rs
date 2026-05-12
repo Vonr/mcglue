@@ -580,3 +580,23 @@ impl LogLevel {
 fn as_u64<'src>(src: &'src [u8], span: SimpleSpan) -> Result<u64, Rich<'src, u8, SimpleSpan>> {
     btoi::btou::<u64>(src).map_err(|e| Rich::custom(span, e.to_string()))
 }
+
+pub struct Identifier {
+    pub namespace: String,
+    pub path: String,
+}
+
+impl Identifier {
+    pub fn parser<'src>() -> impl Parser<'src, &'src str, Identifier, extra::Err<Rich<'src, char>>>
+    {
+        let valid = || one_of("0123456789abcdefghijklmnopqrstuvwxyz_-.");
+
+        group((
+            valid().repeated().at_least(1).collect::<String>(),
+            just(":").ignored(),
+            valid().repeated().at_least(1).collect::<String>(),
+            end(),
+        ))
+        .map(|(namespace, _, path, _)| Identifier { namespace, path })
+    }
+}
