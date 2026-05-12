@@ -1,6 +1,6 @@
 [package]
 name = "mcglue"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 license = "MPL-2.0"
 homepage = "https://github.com/Vonr/mcglue"
@@ -28,7 +28,7 @@ tokio = { version = "1", default-features = false, features = ["macros", "parkin
 uuid = { version = "1", features = ["v3", "v4"] }
 walkdir = "2"
 zip = "9.0.0-pre2"
-console-subscriber = "0.5"
+# console-subscriber = "0.5"
 
 [profile.release]
 opt-level = 3
