@@ -134,13 +134,9 @@ impl<'src> Log<'src> {
 
         let list = group((
             just(b"There are ").ignored(),
-            text::int(10).try_map(|s: &[u8], span| {
-                btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e.to_string()))
-            }),
+            text::int(10).try_map(as_u64),
             just(b" of a max of ").ignored(),
-            text::int(10).try_map(|s: &[u8], span| {
-                btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e.to_string()))
-            }),
+            text::int(10).try_map(as_u64),
             just(b" players online: ").ignored(),
             group((
                 any()
@@ -463,71 +459,6 @@ pub struct ListUuidsLog<'src> {
     pub max: u64,
 }
 
-impl<'src> ListUuidsLog<'src> {
-    pub fn parser() -> impl Parser<'src, &'src [u8], ListUuidsLog<'src>, extra::Err<Rich<'src, u8>>>
-    {
-        let hex = |n| {
-            any()
-                .filter(u8::is_ascii_hexdigit)
-                .repeated()
-                .exactly(n)
-                .to_slice()
-                .try_map(|s: &[u8], span| {
-                    btoi::btou_radix(s, 16).map_err(|e| Rich::custom(span, e.to_string()))
-                })
-        };
-
-        group((
-            just(b"There are ").ignored(),
-            text::int(10).try_map(|s: &[u8], span| {
-                btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e.to_string()))
-            }),
-            just(b" of a max of ").ignored(),
-            text::int(10).try_map(|s: &[u8], span| {
-                btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e.to_string()))
-            }),
-            just(b" players online: ").ignored(),
-            group((
-                any()
-                    .filter(|b| *b != b' ')
-                    .repeated()
-                    .at_least(1)
-                    .to_slice(),
-                just(b' ').ignored(),
-                group((
-                    hex(8),
-                    just(b'-').ignored(),
-                    hex(4),
-                    just(b'-').ignored(),
-                    hex(4),
-                    just(b'-').ignored(),
-                    hex(4),
-                    just(b'-').ignored(),
-                    hex(12),
-                ))
-                .map(|(a, _, b, _, c, _, d, _, e)| {
-                    let mut uuid = a;
-                    uuid <<= 16;
-                    uuid += b;
-                    uuid <<= 16;
-                    uuid += c;
-                    uuid <<= 16;
-                    uuid += d;
-                    uuid <<= 48;
-                    uuid += e;
-
-                    Uuid::from_u128(uuid)
-                })
-                .delimited_by(just(b'('), just(b')')),
-            ))
-            .map(|(name, _, uuid)| PlayerData { name, uuid })
-            .separated_by(just(b' '))
-            .collect::<Vec<_>>(),
-        ))
-        .map(|(_, _, _, max, _, players)| ListUuidsLog { players, max })
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct PlayerData<'src> {
     pub name: &'src [u8],
@@ -644,4 +575,8 @@ impl LogLevel {
             text::keyword(b"FATAL").to(LogLevel::Fatal),
         ))
     }
+}
+
+fn as_u64<'src>(src: &'src [u8], span: SimpleSpan) -> Result<u64, Rich<'src, u8, SimpleSpan>> {
+    btoi::btou::<u64>(src).map_err(|e| Rich::custom(span, e.to_string()))
 }
