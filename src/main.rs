@@ -29,7 +29,7 @@ use poise::serenity_prelude::{
 type Error = eyre::Error;
 type Result<T, E = Error> = eyre::Result<T, E>;
 
-static LANG: OnceLock<HashMap<String, &'static str>> = OnceLock::new();
+static LANG: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
 
 #[allow(clippy::type_complexity)]
 static DEATH_MESSAGES: OnceLock<
@@ -44,7 +44,7 @@ static DEATH_MESSAGES: OnceLock<
     )],
 > = OnceLock::new();
 
-static ADVANCEMENTS: OnceLock<HashMap<String, &'static str>> = OnceLock::new();
+static ADVANCEMENTS: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
 
 static COMMAND_CHANNEL: OnceLock<flume::Sender<Box<[u8]>>> = OnceLock::new();
 
@@ -425,7 +425,7 @@ async fn main() -> Result<()> {
                                                         .to_str()
                                                         .ok()
                                                         .and_then(|s| adv.get(s))
-                                                        .map(|s| s.to_string())
+                                                        .copied()
                                                 })
                                                 .unwrap_or_default(),
                                         )
@@ -450,7 +450,7 @@ async fn main() -> Result<()> {
                         let mut death_messages = Vec::new();
                         let mut advancements = HashMap::new();
 
-                        let mut full_lang: HashMap<String, &'static str> = HashMap::new();
+                        let mut full_lang: HashMap<&'static str, &'static str> = HashMap::new();
 
                         serde_json::from_slice::<HashMap<String, String>>(
                             &reqwest::get(
@@ -460,7 +460,7 @@ async fn main() -> Result<()> {
                             .bytes()
                             .await?
                         ).unwrap_or_default().into_iter().for_each(|(k, v)| {
-                            full_lang.insert(k, v.leak());
+                            full_lang.insert(k.leak(), v.leak());
                         });
 
                         let mods_folder = server_directory().join("mods");
@@ -486,7 +486,7 @@ async fn main() -> Result<()> {
                                             .unwrap_or_default()
                                             .into_iter()
                                             .for_each(|(k, v)| {
-                                                full_lang.insert(k, v.leak());
+                                                full_lang.insert(k.leak(), v.leak());
                                             });
                                     }
                                 }
@@ -569,8 +569,8 @@ async fn main() -> Result<()> {
                             {
                                 let mut desc_key = prefix.to_string();
                                 desc_key.push_str(".description");
-                                if let Some(desc) = full_lang.get(&desc_key) {
-                                    advancements.insert(v.to_string(), *desc);
+                                if let Some(desc) = full_lang.get(&*desc_key) {
+                                    advancements.insert(*v, *desc);
                                 }
                             }
                         }
