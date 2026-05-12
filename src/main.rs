@@ -594,7 +594,8 @@ async fn main() -> Result<()> {
         Ok::<(), Error>(())
     });
 
-    let input = std::thread::spawn(|| {
+    let (input_fin_tx, input_fin_rx) = tokio::sync::oneshot::channel::<()>();
+    std::thread::spawn(|| {
         let mut editor = rustyline::DefaultEditor::new().unwrap();
 
         loop {
@@ -616,23 +617,27 @@ async fn main() -> Result<()> {
                 Err(e) => eprintln!("Error reading line: {e:?}"),
             }
         }
+
+        let _ = input_fin_tx.send(());
     });
 
+    let (signal_fin_tx, signal_fin_rx) = tokio::sync::oneshot::channel::<()>();
     let mut signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])?;
-    let signal_handler = join_set.spawn(async move {
+    join_set.spawn(async move {
         while signals.next().await.is_none() {
             tokio::task::yield_now().await;
         }
 
         eprintln!("Received exit signal");
+
+        let _ = signal_fin_tx.send(());
         Ok(())
     });
 
-    while !input.is_finished()
-        && !signal_handler.is_finished()
-        && !matches!(process.try_wait(), Ok(Some(_)))
-    {
-        tokio::time::sleep(Duration::from_millis(100)).await;
+    tokio::select! {
+        _ = input_fin_rx => {}
+        _ = signal_fin_rx => {}
+        _ = process.wait() => {}
     }
 
     if !matches!(process.try_wait(), Ok(Some(_))) {
