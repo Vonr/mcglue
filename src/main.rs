@@ -14,7 +14,7 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
     sync::{Arc, OnceLock},
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use zip::ZipArchive;
@@ -24,6 +24,8 @@ use chumsky::prelude::*;
 use poise::serenity_prelude::{
     CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook, colours, futures::StreamExt,
 };
+
+use tokio::select;
 
 type Error = eyre::Error;
 type Result<T, E = Error> = eyre::Result<T, E>;
@@ -92,6 +94,7 @@ pub fn language() -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // console_subscriber::init();
     color_eyre::install()?;
 
     let _ = dotenvy::dotenv();
@@ -111,19 +114,16 @@ async fn main() -> Result<()> {
     let mut join_set = tokio::task::JoinSet::<Result<()>>::new();
 
     let log_to_console = {
-        let (tx, rx) = flume::unbounded::<Box<str>>();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Box<str>>();
         let http = Http::new(&token);
         let console_webhook =
             Webhook::from_url(&http, &crate::env::discord_console_webhook_url()).await?;
 
         join_set.spawn(async move {
-            let mut last_message = Instant::now();
             let mut buf = String::with_capacity(4096);
 
             loop {
-                if !buf.is_empty()
-                    && Instant::now().duration_since(last_message) > Duration::from_millis(100)
-                {
+                if !buf.is_empty() {
                     let s = buf.chars().collect::<Vec<_>>();
                     let mut s = s.as_slice();
 
@@ -186,12 +186,13 @@ async fn main() -> Result<()> {
                     buf.clear();
                 }
 
-                if let Ok(msg) = rx.try_recv() {
+                if let Some(msg) = rx.recv().await {
                     buf.push_str(&msg);
-                    last_message = Instant::now();
                 }
 
-                tokio::task::yield_now().await;
+                while let Ok(msg) = rx.try_recv() {
+                    buf.push_str(&msg);
+                }
             }
         });
 
@@ -279,7 +280,7 @@ async fn main() -> Result<()> {
             let s = buf[..n].to_str_lossy();
             print!("{s}");
 
-            log_to_console.send_async(s.into()).await?;
+            log_to_console.send(s.into())?;
 
             let parsed = {
                 let parser = Log::parser();
@@ -318,7 +319,7 @@ async fn main() -> Result<()> {
                         )
                         .await;
                 }
-                Log::List(ListUuidsLog { players }) => {
+                Log::List(ListUuidsLog { players, max }) => {
                     let tx = interface::LIST_SENDER.get().unwrap();
                     if tx.receiver_count() == 0 {
                         continue;
@@ -330,7 +331,7 @@ async fn main() -> Result<()> {
                     }
 
                     let owned: Arc<[OwnedPlayerData]> = owned.into();
-                    let _ = tx.send(owned);
+                    let _ = tx.send(ListData{ players: owned, max: *max });
                 }
                 Log::Join(JoinLog { player, .. }) => {
                     let sender: &str = &player.to_str_lossy();
@@ -629,12 +630,12 @@ async fn main() -> Result<()> {
 
     while !input.is_finished()
         && !signal_handler.is_finished()
-        && !process.try_wait().is_ok_and(|o| o.is_some())
+        && !matches!(process.try_wait(), Ok(Some(_)))
     {
-        tokio::task::yield_now().await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
-    if !process.try_wait().is_ok_and(|o| o.is_some()) {
+    if !matches!(process.try_wait(), Ok(Some(_))) {
         eprintln!("Stopping server");
         webhook
             .execute(

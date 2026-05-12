@@ -1,5 +1,6 @@
 mod crash;
 mod download;
+mod list;
 mod tpo;
 
 use std::{borrow::Cow, fmt::Display, path::Path};
@@ -30,7 +31,12 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![crash::crash(), tpo::tpo(), download::download()],
+            commands: vec![
+                crash::crash(),
+                tpo::tpo(),
+                download::download(),
+                list::list(),
+            ],
             event_handler: |ctx, event, framework, data| {
                 Box::pin(event_handler(ctx, event, framework, data))
             },

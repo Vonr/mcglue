@@ -39,9 +39,10 @@ pub async fn tpo(
 ) -> Result<(), Error> {
     let uuid = super::maybe_username_to_uuid(&player).await?;
 
-    let players = crate::interface::list().await?;
+    let list = crate::interface::list().await?;
 
-    if let Some(p) = players
+    if let Some(p) = list
+        .players
         .iter()
         .map(|p| (&p.name, p.uuid))
         .find(|p| p.1 == uuid)

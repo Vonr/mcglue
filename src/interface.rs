@@ -1,11 +1,10 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
-use crate::{Result, parsing::OwnedPlayerData};
+use crate::{Result, parsing::ListData};
 
-pub static LIST_SENDER: OnceLock<tokio::sync::broadcast::Sender<Arc<[OwnedPlayerData]>>> =
-    OnceLock::new();
+pub static LIST_SENDER: OnceLock<tokio::sync::broadcast::Sender<ListData>> = OnceLock::new();
 
-pub async fn list() -> Result<Arc<[OwnedPlayerData]>> {
+pub async fn list() -> Result<ListData> {
     let mut rx = LIST_SENDER.get().unwrap().subscribe();
     crate::command(*b"list").await?;
     Ok(rx.recv().await?)

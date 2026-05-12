@@ -4,7 +4,7 @@ use std::{
     borrow::Cow,
     fmt::{Debug, Display},
     ops::Deref,
-    sync::{LazyLock, OnceLock},
+    sync::{Arc, LazyLock, OnceLock},
 };
 
 use bstr::ByteSlice;
@@ -202,8 +202,8 @@ impl<'src> Log<'src> {
             .separated_by(just(b' '))
             .collect::<Vec<_>>(),
         ))
-        .map(|(_, _, _, _, _, players)| PartialLog::List {
-            data: ListUuidsLog { players },
+        .map(|(_, _, _, max, _, players)| PartialLog::List {
+            data: ListUuidsLog { players, max },
         })
         .map_err(|e| Rich::custom(*e.span(), "Could not parse as `/list uuids` output"))
         .only_if_logger(LogLevel::Info, b"Server thread");
@@ -490,6 +490,7 @@ pub struct DeathLog<'src> {
 #[derive(Clone, Debug)]
 pub struct ListUuidsLog<'src> {
     pub players: Vec<PlayerData<'src>>,
+    pub max: u64,
 }
 
 impl<'src> ListUuidsLog<'src> {
@@ -551,7 +552,7 @@ impl<'src> ListUuidsLog<'src> {
             .separated_by(just(b' '))
             .collect::<Vec<_>>(),
         ))
-        .map(|(_, _, _, _, _, players)| ListUuidsLog { players })
+        .map(|(_, _, _, max, _, players)| ListUuidsLog { players, max })
     }
 }
 
@@ -576,6 +577,12 @@ impl TryFrom<&PlayerData<'_>> for OwnedPlayerData {
 pub struct OwnedPlayerData {
     pub name: Box<str>,
     pub uuid: Uuid,
+}
+
+#[derive(Clone, Debug)]
+pub struct ListData {
+    pub players: Arc<[OwnedPlayerData]>,
+    pub max: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
