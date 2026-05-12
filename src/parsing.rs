@@ -60,31 +60,7 @@ pub enum Log<'src> {
     Advancement(AdvancementLog<'src>),
     Starting(StartingLog<'src>),
     Death(DeathLog<'src>),
-    Unknown(ShowLossyStr<'src>),
-}
-
-#[repr(transparent)]
-#[derive(Clone, PartialEq, Eq, Default)]
-pub struct ShowLossyStr<'a>(pub &'a [u8]);
-
-impl Debug for ShowLossyStr<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self.to_str_lossy())
-    }
-}
-
-impl Display for ShowLossyStr<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(&self, f)
-    }
-}
-
-impl<'a> Deref for ShowLossyStr<'a> {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        self.0
-    }
+    Unknown(&'src [u8]),
 }
 
 impl<'src> Log<'src> {
@@ -106,9 +82,8 @@ impl<'src> Log<'src> {
             P: Parser<'src, I, O, E>,
         {
             fn only_if_logger(self, level: LogLevel, name: &[u8]) -> impl Parser<'src, I, O, E> {
-                self.contextual().configure(move |_, ctx: &Logger<'src>| {
-                    ctx.level == level && ctx.name.0 == name
-                })
+                self.contextual()
+                    .configure(move |_, ctx: &Logger<'src>| ctx.level == level && ctx.name == name)
             }
         }
 
@@ -119,7 +94,7 @@ impl<'src> Log<'src> {
                 .exactly(n)
                 .to_slice()
                 .try_map(|s: &[u8], span| {
-                    btoi::btou_radix(s, 16).map_err(|e| Rich::custom(span, e))
+                    btoi::btou_radix(s, 16).map_err(|e| Rich::custom(span, e.to_string()))
                 })
         };
 
@@ -159,11 +134,13 @@ impl<'src> Log<'src> {
 
         let list = group((
             just(b"There are ").ignored(),
-            text::int(10)
-                .try_map(|s: &[u8], span| btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e))),
+            text::int(10).try_map(|s: &[u8], span| {
+                btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e.to_string()))
+            }),
             just(b" of a max of ").ignored(),
-            text::int(10)
-                .try_map(|s: &[u8], span| btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e))),
+            text::int(10).try_map(|s: &[u8], span| {
+                btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e.to_string()))
+            }),
             just(b" players online: ").ignored(),
             group((
                 any()
@@ -383,7 +360,7 @@ impl<'src> Log<'src> {
                     PartialLog::Generic { message } => Self::Generic(GenericLog {
                         time,
                         logger,
-                        message: ShowLossyStr(message),
+                        message,
                     }),
                     PartialLog::Chat {
                         secure,
@@ -392,41 +369,34 @@ impl<'src> Log<'src> {
                     } => Self::Chat(ChatLog {
                         time,
                         secure,
-                        sender: ShowLossyStr(sender),
-                        message: ShowLossyStr(message),
+                        sender,
+                        message,
                     }),
                     PartialLog::List { data } => Self::List(data),
-                    PartialLog::Join { player } => Self::Join(JoinLog {
-                        time,
-                        player: ShowLossyStr(player),
-                    }),
-                    PartialLog::Leave { player } => Self::Leave(LeaveLog {
-                        time,
-                        player: ShowLossyStr(player),
-                    }),
+                    PartialLog::Join { player } => Self::Join(JoinLog { time, player }),
+                    PartialLog::Leave { player } => Self::Leave(LeaveLog { time, player }),
                     PartialLog::Advancement {
                         player,
                         advancement,
                     } => Self::Advancement(AdvancementLog {
                         time,
-                        player: ShowLossyStr(player),
-                        advancement: ShowLossyStr(advancement),
+                        player,
+                        advancement,
                     }),
-                    PartialLog::Starting { version } => Self::Starting(StartingLog {
-                        time,
-                        version: ShowLossyStr(version),
-                    }),
+                    PartialLog::Starting { version } => {
+                        Self::Starting(StartingLog { time, version })
+                    }
                     PartialLog::Death {
                         victim,
                         attacker,
                         weapon,
                     } => Self::Death(DeathLog {
                         time,
-                        victim: ShowLossyStr(victim),
-                        attacker: ShowLossyStr(attacker),
-                        weapon: ShowLossyStr(weapon),
+                        victim,
+                        attacker,
+                        weapon,
                     }),
-                    PartialLog::Unknown { message } => Self::Unknown(ShowLossyStr(message)),
+                    PartialLog::Unknown { message } => Self::Unknown(message),
                 },
                 span,
             )
@@ -435,7 +405,7 @@ impl<'src> Log<'src> {
             .repeated()
             .lazy()
             .to_slice()
-            .map_with(|unknown, e| (Log::Unknown(ShowLossyStr(unknown)), e.span())))
+            .map_with(|unknown, e| (Log::Unknown(unknown), e.span())))
     }
 }
 
@@ -443,48 +413,48 @@ impl<'src> Log<'src> {
 pub struct GenericLog<'src> {
     pub time: HmsTime,
     pub logger: Logger<'src>,
-    pub message: ShowLossyStr<'src>,
+    pub message: &'src [u8],
 }
 
 #[derive(Clone, Debug)]
 pub struct ChatLog<'src> {
     pub time: HmsTime,
     pub secure: Option<bool>,
-    pub sender: ShowLossyStr<'src>,
-    pub message: ShowLossyStr<'src>,
+    pub sender: &'src [u8],
+    pub message: &'src [u8],
 }
 
 #[derive(Clone, Debug)]
 pub struct JoinLog<'src> {
     pub time: HmsTime,
-    pub player: ShowLossyStr<'src>,
+    pub player: &'src [u8],
 }
 
 #[derive(Clone, Debug)]
 pub struct LeaveLog<'src> {
     pub time: HmsTime,
-    pub player: ShowLossyStr<'src>,
+    pub player: &'src [u8],
 }
 
 #[derive(Clone, Debug)]
 pub struct AdvancementLog<'src> {
     pub time: HmsTime,
-    pub player: ShowLossyStr<'src>,
-    pub advancement: ShowLossyStr<'src>,
+    pub player: &'src [u8],
+    pub advancement: &'src [u8],
 }
 
 #[derive(Clone, Debug)]
 pub struct StartingLog<'src> {
     pub time: HmsTime,
-    pub version: ShowLossyStr<'src>,
+    pub version: &'src [u8],
 }
 
 #[derive(Clone, Debug)]
 pub struct DeathLog<'src> {
     pub time: HmsTime,
-    pub victim: ShowLossyStr<'src>,
-    pub attacker: ShowLossyStr<'src>,
-    pub weapon: ShowLossyStr<'src>,
+    pub victim: &'src [u8],
+    pub attacker: &'src [u8],
+    pub weapon: &'src [u8],
 }
 
 #[derive(Clone, Debug)]
@@ -503,17 +473,19 @@ impl<'src> ListUuidsLog<'src> {
                 .exactly(n)
                 .to_slice()
                 .try_map(|s: &[u8], span| {
-                    btoi::btou_radix(s, 16).map_err(|e| Rich::custom(span, e))
+                    btoi::btou_radix(s, 16).map_err(|e| Rich::custom(span, e.to_string()))
                 })
         };
 
         group((
             just(b"There are ").ignored(),
-            text::int(10)
-                .try_map(|s: &[u8], span| btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e))),
+            text::int(10).try_map(|s: &[u8], span| {
+                btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e.to_string()))
+            }),
             just(b" of a max of ").ignored(),
-            text::int(10)
-                .try_map(|s: &[u8], span| btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e))),
+            text::int(10).try_map(|s: &[u8], span| {
+                btoi::btou::<u64>(s).map_err(|e| Rich::custom(span, e.to_string()))
+            }),
             just(b" players online: ").ignored(),
             group((
                 any()
@@ -620,13 +592,13 @@ impl HmsTime {
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Logger<'src> {
-    pub name: ShowLossyStr<'src>,
+    pub name: &'src [u8],
     pub level: LogLevel,
 }
 
 impl Display for Logger<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", self.name, self.level)
+        write!(f, "{}/{}", self.name.to_str_lossy(), self.level)
     }
 }
 
@@ -640,10 +612,7 @@ impl<'src> Logger<'src> {
             LogLevel::parser(),
         ))
         .delimited_by(just(b'['), just(b']'))
-        .map(|(name, _, level)| Logger {
-            name: ShowLossyStr(name),
-            level,
-        })
+        .map(|(name, _, level)| Logger { name, level })
     }
 }
 
