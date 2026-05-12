@@ -25,8 +25,6 @@ use poise::serenity_prelude::{
     CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook, colours, futures::StreamExt,
 };
 
-use tokio::select;
-
 type Error = eyre::Error;
 type Result<T, E = Error> = eyre::Result<T, E>;
 
@@ -106,6 +104,14 @@ async fn main() -> Result<()> {
         std::process::exit(1);
     }
 
+    let (signal_fin_tx, signal_fin_rx) = tokio::sync::oneshot::channel::<()>();
+    let mut signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])?;
+    tokio::task::spawn(async move {
+        signals.next().await;
+        eprintln!("Received exit signal");
+        let _ = signal_fin_tx.send(());
+    });
+
     let token = env::discord_bot_token();
 
     let http = Http::new(&token);
@@ -113,16 +119,16 @@ async fn main() -> Result<()> {
 
     let mut join_set = tokio::task::JoinSet::<Result<()>>::new();
 
-    let log_to_console = {
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Box<str>>();
+    let (logger, log_to_console) = {
+        let (tx, rx) = flume::unbounded::<Box<str>>();
         let http = Http::new(&token);
         let console_webhook =
             Webhook::from_url(&http, &crate::env::discord_console_webhook_url()).await?;
 
-        join_set.spawn(async move {
+        let logger = tokio::task::spawn(async move {
             let mut buf = String::with_capacity(4096);
 
-            loop {
+            while rx.sender_count() > 0 || !rx.is_empty() {
                 if !buf.is_empty() {
                     let s = buf.chars().collect::<Vec<_>>();
                     let mut s = s.as_slice();
@@ -186,7 +192,7 @@ async fn main() -> Result<()> {
                     buf.clear();
                 }
 
-                if let Some(msg) = rx.recv().await {
+                if let Ok(msg) = rx.recv_async().await {
                     buf.push_str(&msg);
                 }
 
@@ -196,7 +202,7 @@ async fn main() -> Result<()> {
             }
         });
 
-        tx
+        (logger, tx)
     };
 
     interface::LIST_SENDER
@@ -265,7 +271,7 @@ async fn main() -> Result<()> {
         Ok(())
     });
 
-    join_set.spawn(async move {
+    let log_reader = tokio::task::spawn(async move {
         let http = Http::new(&token);
         let webhook = Webhook::from_url(&http, &crate::env::discord_webhook_url()).await?;
 
@@ -331,7 +337,10 @@ async fn main() -> Result<()> {
                     }
 
                     let owned: Arc<[OwnedPlayerData]> = owned.into();
-                    let _ = tx.send(ListData{ players: owned, max: *max });
+                    let _ = tx.send(ListData {
+                        players: owned,
+                        max: *max,
+                    });
                 }
                 Log::Join(JoinLog { player, .. }) => {
                     let sender: &str = &player.to_str_lossy();
@@ -621,23 +630,10 @@ async fn main() -> Result<()> {
         let _ = input_fin_tx.send(());
     });
 
-    let (signal_fin_tx, signal_fin_rx) = tokio::sync::oneshot::channel::<()>();
-    let mut signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])?;
-    join_set.spawn(async move {
-        while signals.next().await.is_none() {
-            tokio::task::yield_now().await;
-        }
-
-        eprintln!("Received exit signal");
-
-        let _ = signal_fin_tx.send(());
-        Ok(())
-    });
-
     tokio::select! {
         _ = input_fin_rx => {}
         _ = signal_fin_rx => {}
-        _ = process.wait() => {}
+        Ok(_) = process.wait() => {}
     }
 
     if !matches!(process.try_wait(), Ok(Some(_))) {
@@ -662,7 +658,13 @@ async fn main() -> Result<()> {
 
     eprintln!("Stopping wrapper");
 
+    let _ = process.wait().await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    log_reader.abort();
+    logger.await?;
     join_set.abort_all();
+
+    eprintln!("Stopped wrapper");
 
     Ok(())
 }
