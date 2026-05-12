@@ -535,30 +535,24 @@ async fn main() -> Result<()> {
                                 }
 
                                 death_messages.push((
-                                    (Box::leak(Box::<str>::from(&v[..first.0])) as &'static str)
-                                        .as_bytes(),
+                                    (&v[..first.0] as &'static str).as_bytes(),
                                     first.1,
                                     if first.0 + 4 < v.len() {
-                                        {
-                                            Box::leak(Box::<str>::from(&v[first.0 + 4..second.0]))
-                                                as &'static str
-                                        }
+                                        &v[first.0 + 4..second.0]
                                     } else {
                                         ""
                                     }
                                     .as_bytes(),
                                     second.1,
                                     if second.0 + 4 < v.len() {
-                                        Box::leak(Box::<str>::from(&v[second.0 + 4..third.0]))
-                                            as &'static str
+                                        &v[second.0 + 4..third.0]
                                     } else {
                                         ""
                                     }
                                     .as_bytes(),
                                     third.1,
                                     if third.0 + 4 < v.len() {
-                                        Box::leak(Box::<str>::from(&v[third.0 + 4..]))
-                                            as &'static str
+                                        &v[third.0 + 4..]
                                     } else {
                                         ""
                                     }
@@ -576,7 +570,8 @@ async fn main() -> Result<()> {
                         }
 
                         let death_len = death_messages.len();
-                        let _ = DEATH_MESSAGES.get_or_init(|| Box::leak(death_messages.into()));
+                        let _ = DEATH_MESSAGES
+                            .get_or_init(|| Box::leak(death_messages.into_boxed_slice()));
                         let advancement_len = advancements.len();
                         let _ = ADVANCEMENTS.get_or_init(|| advancements);
                         let full_len = full_lang.len();
