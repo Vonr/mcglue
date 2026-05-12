@@ -29,6 +29,8 @@ use poise::serenity_prelude::{
 type Error = eyre::Error;
 type Result<T, E = Error> = eyre::Result<T, E>;
 
+static LANG: OnceLock<HashMap<String, &'static str>> = OnceLock::new();
+
 #[allow(clippy::type_complexity)]
 static DEATH_MESSAGES: OnceLock<
     &'static [(
@@ -41,6 +43,8 @@ static DEATH_MESSAGES: OnceLock<
         &'static [u8],
     )],
 > = OnceLock::new();
+
+static ADVANCEMENTS: OnceLock<HashMap<String, &'static str>> = OnceLock::new();
 
 static COMMAND_CHANNEL: OnceLock<flume::Sender<Box<[u8]>>> = OnceLock::new();
 
@@ -90,8 +94,6 @@ pub fn server_directory() -> PathBuf {
 pub fn language() -> String {
     crate::env::language().unwrap_or_else(|| String::from("en_us"))
 }
-
-static LANG: OnceLock<HashMap<String, String>> = OnceLock::new();
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -391,7 +393,11 @@ async fn main() -> Result<()> {
                         )
                         .await;
                 }
-                Log::Advancement(AdvancementLog { player, .. }) => {
+                Log::Advancement(AdvancementLog {
+                    player,
+                    advancement,
+                    ..
+                }) => {
                     let sender: &str = &player.to_str_lossy();
 
                     let avatar = format!("https://skinatar.firstdark.dev/avatar/{sender}");
@@ -411,30 +417,87 @@ async fn main() -> Result<()> {
                                             )
                                             .icon_url(&avatar),
                                         )
+                                        .description(
+                                            ADVANCEMENTS
+                                                .get()
+                                                .and_then(|adv| {
+                                                    advancement
+                                                        .to_str()
+                                                        .ok()
+                                                        .and_then(|s| adv.get(s))
+                                                        .map(|s| s.to_string())
+                                                })
+                                                .unwrap_or_default(),
+                                        )
                                         .colour(colours::branding::YELLOW),
                                 ),
                         )
                         .await;
                 }
                 Log::Starting(StartingLog { version, .. }) => {
-                    #[allow(clippy::type_complexity)]
-                    fn lang_to_deaths(
-                        map: &HashMap<String, String>,
-                    ) -> impl Iterator<
-                        Item = (
-                            &'static [u8],
-                            DeathMessageComponent,
-                            &'static [u8],
-                            DeathMessageComponent,
-                            &'static [u8],
-                            DeathMessageComponent,
-                            &'static [u8],
-                        ),
-                    > {
-                        map.iter()
-                            .filter(|(k, _)| k.starts_with("death."))
-                            .filter_map(|(_, v)| {
-                                let victim = v.find("%1$s")?;
+                    let version = version.to_str_lossy().into_owned();
+
+                    tokio::spawn(async move {
+                        let lang_file_name = {
+                            let mut name = language();
+                            name.push_str(".json");
+                            name
+                        };
+
+                        eprintln!("Looking for language files named {}", lang_file_name);
+                        let mut buf = Vec::new();
+
+                        let mut death_messages = Vec::new();
+                        let mut advancements = HashMap::new();
+
+                        let mut full_lang: HashMap<String, &'static str> = HashMap::new();
+
+                        serde_json::from_slice::<HashMap<String, String>>(
+                            &reqwest::get(
+                                format!("https://assets.mcasset.cloud/{version}/assets/minecraft/lang/{lang_file_name}")
+                            )
+                            .await?
+                            .bytes()
+                            .await?
+                        ).unwrap_or_default().into_iter().for_each(|(k, v)| {
+                            full_lang.insert(k, v.leak());
+                        });
+
+                        let mods_folder = server_directory().join("mods");
+                        if let Ok(mod_paths) = jar::files(&mods_folder) {
+                            for path in mod_paths {
+                                let file = OpenOptions::new().read(true).open(&path)?;
+                                let mut archive = ZipArchive::new(file)?;
+
+                                for i in 0..archive.len() {
+                                    let mut file = archive.by_index(i)?;
+
+                                    if !file.is_file() {
+                                        continue;
+                                    }
+
+                                    if let Some(name) = file.enclosed_name()
+                                        && name.file_name().is_some_and(|n| *n == *lang_file_name)
+                                    {
+                                        buf.clear();
+                                        file.read_to_end(&mut buf)?;
+
+                                        serde_json::from_slice::<HashMap<String, String>>(&buf)
+                                            .unwrap_or_default()
+                                            .into_iter()
+                                            .for_each(|(k, v)| {
+                                                full_lang.insert(k, v.leak());
+                                            });
+                                    }
+                                }
+                            }
+                        }
+
+                        for (k, v) in &full_lang {
+                            if k.starts_with("death.") {
+                                let Some(victim) = v.find("%1$s") else {
+                                    continue;
+                                };
 
                                 let mut first = (victim, DeathMessageComponent::Victim);
                                 let mut second = (v.len(), DeathMessageComponent::Empty);
@@ -471,7 +534,7 @@ async fn main() -> Result<()> {
                                     }
                                 }
 
-                                let ret = (
+                                death_messages.push((
                                     (Box::leak(Box::<str>::from(&v[..first.0])) as &'static str)
                                         .as_bytes(),
                                     first.1,
@@ -500,75 +563,27 @@ async fn main() -> Result<()> {
                                         ""
                                     }
                                     .as_bytes(),
-                                );
-
-                                Some(ret)
-                            })
-                    }
-
-                    let version = version.to_str_lossy().into_owned();
-
-                    tokio::spawn(async move {
-                        let lang_file_name = {
-                            let mut name = language();
-                            name.push_str(".json");
-                            name
-                        };
-
-                        eprintln!("Looking for language files named {}", lang_file_name);
-                        let mut buf = Vec::new();
-
-                        let mut death_messages = Vec::new();
-
-                        let lang_map: HashMap<String, String> =
-                            serde_json::from_slice(&reqwest::get(format!(
-                                "https://assets.mcasset.cloud/{version}/assets/minecraft/lang/{lang_file_name}"
-                            ))
-                                .await?
-                                .bytes()
-                                .await?)
-                            .unwrap_or_default();
-                        let mut full_lang = lang_map.clone();
-
-                        let mods_folder = server_directory().join("mods");
-                        if let Ok(mod_paths) = jar::files(&mods_folder) {
-                            for path in mod_paths {
-                                let file = OpenOptions::new().read(true).open(&path)?;
-                                let mut archive = ZipArchive::new(file)?;
-
-                                for i in 0..archive.len() {
-                                    let mut file = archive.by_index(i)?;
-
-                                    if !file.is_file() {
-                                        continue;
-                                    }
-
-                                    if let Some(name) = file.enclosed_name()
-                                        && name.file_name().is_some_and(|n| *n == *lang_file_name)
-                                    {
-                                        buf.clear();
-                                        file.read_to_end(&mut buf)?;
-
-                                        let lang_map: HashMap<String, String> =
-                                            serde_json::from_slice(&buf).unwrap_or_default();
-
-                                        lang_to_deaths(&lang_map)
-                                            .for_each(|e| death_messages.push(e));
-                                        full_lang.extend(lang_map.into_iter());
-                                    }
+                                ));
+                            } else if k.starts_with("advancements.")
+                                && let Some(prefix) = k.strip_suffix(".title")
+                            {
+                                let mut desc_key = prefix.to_string();
+                                desc_key.push_str(".description");
+                                if let Some(desc) = full_lang.get(&desc_key) {
+                                    advancements.insert(v.to_string(), *desc);
                                 }
                             }
                         }
 
-                        lang_to_deaths(&lang_map).for_each(|e| death_messages.push(e));
-
-                        let len = death_messages.len();
+                        let death_len = death_messages.len();
                         let _ = DEATH_MESSAGES.get_or_init(|| Box::leak(death_messages.into()));
+                        let advancement_len = advancements.len();
+                        let _ = ADVANCEMENTS.get_or_init(|| advancements);
                         let full_len = full_lang.len();
                         let _ = LANG.get_or_init(|| full_lang);
                         eprintln!(
-                            "Initialized {} death messages and {} lang entries.",
-                            len, full_len
+                            "Initialized {} death messages and {} advancements from {} lang entries.",
+                            death_len, advancement_len, full_len
                         );
 
                         Ok::<_, Error>(())
