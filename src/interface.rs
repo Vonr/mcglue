@@ -6,6 +6,6 @@ pub static LIST_SENDER: OnceLock<tokio::sync::broadcast::Sender<ListData>> = Onc
 
 pub async fn list() -> Result<ListData> {
     let mut rx = LIST_SENDER.get().unwrap().subscribe();
-    crate::command(*b"list").await?;
+    crate::command(*b"list uuids").await?;
     Ok(rx.recv().await?)
 }
