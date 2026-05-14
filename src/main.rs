@@ -568,18 +568,23 @@ async fn main() -> Result<()> {
                                 }
                             }
                         }
+                        advancements.shrink_to_fit();
+                        full_lang.shrink_to_fit();
 
                         let death_len = death_messages.len();
                         let _ = DEATH_MESSAGES
                             .get_or_init(|| Box::leak(death_messages.into_boxed_slice()));
                         let advancement_len = advancements.len();
                         let _ = ADVANCEMENTS.get_or_init(|| advancements);
-                        let full_len = full_lang.len();
-                        let _ = LANG.get_or_init(|| full_lang);
                         eprintln!(
-                            "Initialized {} death messages and {} advancements from {} lang entries.",
-                            death_len, advancement_len, full_len
+                            "Initialized {} death messages and {} advancements from {} lang entries.\nKeys: {} bytes, Values: {} bytes",
+                            death_len,
+                            advancement_len,
+                            full_lang.len(),
+                            full_lang.keys().map(|&s| s.len()).sum::<usize>(),
+                            full_lang.values().map(|&s| s.len()).sum::<usize>()
                         );
+                        let _ = LANG.get_or_init(|| full_lang);
 
                         Ok::<_, Error>(())
                     });

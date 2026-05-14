@@ -36,6 +36,11 @@ lto = "thin"
 debug = 0
 strip = true
 
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+strip = false
+
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/{ version }/{ name }-{ version }-{ target }{ archive-suffix }"
 bin-dir = "{ name }-{ version }-{ target }/{ bin }{ binary-ext }"
