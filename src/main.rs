@@ -450,6 +450,8 @@ async fn main() -> Result<()> {
                         let mut death_messages = Vec::new();
                         let mut advancements = HashMap::new();
 
+                        let mut mega_string = String::new();
+                        let mut lang_ranges = Vec::new();
                         let mut full_lang: HashMap<&'static str, &'static str> = HashMap::new();
 
                         serde_json::from_slice::<HashMap<String, String>>(
@@ -460,7 +462,13 @@ async fn main() -> Result<()> {
                             .bytes()
                             .await?
                         ).unwrap_or_default().into_iter().for_each(|(k, v)| {
-                            full_lang.insert(k.leak(), v.leak());
+                            let k_start = mega_string.len();
+                            mega_string.push_str(&k);
+                            let k_end = mega_string.len();
+                            let v_start = mega_string.len();
+                            mega_string.push_str(&v);
+                            let v_end = mega_string.len();
+                            lang_ranges.push((k_start..k_end, v_start..v_end));
                         });
 
                         let mods_folder = server_directory().join("mods");
@@ -486,11 +494,23 @@ async fn main() -> Result<()> {
                                             .unwrap_or_default()
                                             .into_iter()
                                             .for_each(|(k, v)| {
-                                                full_lang.insert(k.leak(), v.leak());
+                                                let k_start = mega_string.len();
+                                                mega_string.push_str(&k);
+                                                let k_end = mega_string.len();
+                                                let v_start = mega_string.len();
+                                                mega_string.push_str(&v);
+                                                let v_end = mega_string.len();
+                                                lang_ranges.push((k_start..k_end, v_start..v_end));
                                             });
                                     }
                                 }
                             }
+                        }
+
+                        mega_string.shrink_to_fit();
+                        let mega_string = mega_string.leak();
+                        for (k, v) in lang_ranges {
+                            full_lang.insert(&mega_string[k], &mega_string[v]);
                         }
 
                         for (k, v) in &full_lang {
