@@ -450,7 +450,7 @@ async fn main() -> Result<()> {
                         let mut death_messages = Vec::new();
                         let mut advancements = HashMap::new();
 
-                        let mut mega_string = String::new();
+                        let mut lang_string = String::new();
                         let mut lang_ranges = Vec::new();
                         let mut full_lang: HashMap<&'static str, &'static str> = HashMap::new();
 
@@ -462,12 +462,12 @@ async fn main() -> Result<()> {
                             .bytes()
                             .await?
                         ).unwrap_or_default().into_iter().for_each(|(k, v)| {
-                            let k_start = mega_string.len();
-                            mega_string.push_str(&k);
-                            let k_end = mega_string.len();
-                            let v_start = mega_string.len();
-                            mega_string.push_str(&v);
-                            let v_end = mega_string.len();
+                            let k_start = lang_string.len();
+                            lang_string.push_str(&k);
+                            let k_end = lang_string.len();
+                            let v_start = lang_string.len();
+                            lang_string.push_str(&v);
+                            let v_end = lang_string.len();
                             lang_ranges.push((k_start..k_end, v_start..v_end));
                         });
 
@@ -494,12 +494,12 @@ async fn main() -> Result<()> {
                                             .unwrap_or_default()
                                             .into_iter()
                                             .for_each(|(k, v)| {
-                                                let k_start = mega_string.len();
-                                                mega_string.push_str(&k);
-                                                let k_end = mega_string.len();
-                                                let v_start = mega_string.len();
-                                                mega_string.push_str(&v);
-                                                let v_end = mega_string.len();
+                                                let k_start = lang_string.len();
+                                                lang_string.push_str(&k);
+                                                let k_end = lang_string.len();
+                                                let v_start = lang_string.len();
+                                                lang_string.push_str(&v);
+                                                let v_end = lang_string.len();
                                                 lang_ranges.push((k_start..k_end, v_start..v_end));
                                             });
                                     }
@@ -507,10 +507,10 @@ async fn main() -> Result<()> {
                             }
                         }
 
-                        mega_string.shrink_to_fit();
-                        let mega_string = mega_string.leak();
+                        lang_string.shrink_to_fit();
+                        let lang_string = lang_string.leak();
                         for (k, v) in lang_ranges {
-                            full_lang.insert(&mega_string[k], &mega_string[v]);
+                            full_lang.insert(&lang_string[k], &lang_string[v]);
                         }
 
                         for (k, v) in &full_lang {
