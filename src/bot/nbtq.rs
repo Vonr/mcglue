@@ -18,7 +18,7 @@ use std::io::Write;
 use std::{fs::OpenOptions, io::Read};
 
 use super::Context;
-use crate::Error;
+use crate::{Error, SafeJoin};
 
 /// Teleport an offline player.
 #[poise::command(slash_command, guild_only, check = "super::is_operator")]
@@ -31,7 +31,7 @@ pub async fn nbtq(
     #[description = "Save output of filter to the input file"] save: Option<bool>,
 ) -> Result<(), Error> {
     let save = save.unwrap_or(false);
-    let path = ctx.data().server_directory.join(path);
+    let path = ctx.data().server_directory.safe_join(path)?;
     let file_name = path
         .file_name()
         .map(|s| s.to_string_lossy().to_string())
