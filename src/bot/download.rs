@@ -2,7 +2,7 @@ use eyre::bail;
 use poise::{CreateReply, serenity_prelude::CreateAttachment};
 use std::fs::File;
 use std::io::Cursor;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::{fs::OpenOptions, io::Read};
 use walkdir::WalkDir;
 use zip::CompressionMethod;
@@ -17,7 +17,7 @@ use crate::{Result, SafeJoin};
 pub async fn download(
     ctx: Context<'_>,
     #[description = "Path to the file or folder"]
-    #[autocomplete = "autocomplete_path"]
+    #[autocomplete = "super::autocomplete_path_any"]
     path: String,
 ) -> Result<()> {
     let path = ctx.data().server_directory.safe_join(path)?;
@@ -104,60 +104,4 @@ fn zip_dir(buf: &mut Vec<u8>, src_dir: &Path, method: CompressionMethod) -> Resu
     zip.finish()?;
 
     Ok(())
-}
-
-async fn autocomplete_path(ctx: Context<'_>, partial: &str) -> Vec<String> {
-    if !matches!(super::is_operator(ctx).await, Ok(true)) {
-        return Vec::new();
-    }
-
-    let mut path = PathBuf::from(partial);
-    if path
-        .components()
-        .any(|c| !matches!(c, std::path::Component::Normal(_)))
-    {
-        return Vec::new();
-    }
-
-    let Some(mut root) = crate::server_directory()
-        .canonicalize()
-        .ok()
-        .and_then(|d| d.to_str().map(|s| s.to_string()))
-    else {
-        return Vec::new();
-    };
-
-    root.push('/');
-
-    if matches!(std::fs::exists(&path), Ok(true)) {
-        if !path.is_dir() {
-            return vec![partial.to_string()];
-        }
-    } else {
-        if let Some(parent) = path.parent() {
-            path = parent.to_path_buf();
-        } else {
-            path = PathBuf::from(&root);
-        };
-    }
-
-    WalkDir::new(path)
-        .max_depth(1)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter_map(|e| e.path().canonicalize().ok())
-        .filter_map(|e| {
-            e.to_str().map(|s| {
-                let mut s = s.to_string();
-                if let Some(stripped) = s.strip_prefix(&root) {
-                    s = stripped.to_string();
-                }
-                if e.is_dir() {
-                    s.push('/');
-                }
-                s
-            })
-        })
-        .filter(|e| !e.starts_with('/') && e.contains(partial))
-        .collect()
 }

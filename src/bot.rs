@@ -1,9 +1,14 @@
 mod crash;
 mod download;
 mod list;
+mod nbtq;
 mod tpo;
 
-use std::{borrow::Cow, fmt::Display, path::Path};
+use std::{
+    borrow::Cow,
+    fmt::Display,
+    path::{Path, PathBuf},
+};
 
 use parking_lot::Mutex;
 use poise::{
@@ -12,6 +17,7 @@ use poise::{
 };
 use serde::Deserialize;
 use uuid::Uuid;
+use walkdir::WalkDir;
 
 use crate::{Error, Result};
 
@@ -36,6 +42,7 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
                 tpo::tpo(),
                 download::download(),
                 list::list(),
+                nbtq::nbtq(),
             ],
             event_handler: |ctx, event, framework, data| {
                 Box::pin(event_handler(ctx, event, framework, data))
@@ -182,4 +189,79 @@ pub async fn is_operator(ctx: Context<'_>) -> Result<bool> {
 
         Ok(false)
     }
+}
+
+async fn autocomplete_path(
+    ctx: Context<'_>,
+    partial: &str,
+    condition: impl FnMut(&PathBuf) -> bool,
+) -> Vec<String> {
+    if !matches!(is_operator(ctx).await, Ok(true)) {
+        return Vec::new();
+    }
+
+    let mut path = PathBuf::from(partial);
+    if path
+        .components()
+        .any(|c| !matches!(c, std::path::Component::Normal(_)))
+    {
+        return Vec::new();
+    }
+
+    let Some(mut root) = crate::server_directory()
+        .canonicalize()
+        .ok()
+        .and_then(|d| d.to_str().map(|s| s.to_string()))
+    else {
+        return Vec::new();
+    };
+
+    root.push('/');
+
+    if matches!(std::fs::exists(&path), Ok(true)) {
+        if !path.is_dir() {
+            return vec![partial.to_string()];
+        }
+    } else {
+        if let Some(parent) = path.parent() {
+            path = parent.to_path_buf();
+        } else {
+            path = PathBuf::from(&root);
+        };
+    }
+
+    WalkDir::new(path)
+        .max_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter_map(|e| e.path().canonicalize().ok())
+        .filter(condition)
+        .filter_map(|e| {
+            e.to_str().map(|s| {
+                let mut s = s.to_string();
+                if let Some(stripped) = s.strip_prefix(&root) {
+                    s = stripped.to_string();
+                }
+                if e.is_dir() {
+                    s.push('/');
+                }
+                s
+            })
+        })
+        .filter(|e| !e.starts_with('/') && e.contains(partial))
+        .collect()
+}
+
+pub async fn autocomplete_path_any(ctx: Context<'_>, partial: &str) -> Vec<String> {
+    autocomplete_path(ctx, partial, |_| true).await
+}
+
+pub async fn autocomplete_path_nbt(ctx: Context<'_>, partial: &str) -> Vec<String> {
+    autocomplete_path(ctx, partial, |e| {
+        e.extension().is_some_and(|e| {
+            e.to_str()
+                .is_some_and(|e| matches!(e, "nbt" | "dat" | "snbt"))
+        })
+    })
+    .await
 }
