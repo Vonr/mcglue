@@ -1,3 +1,4 @@
+use crab_nbt::{Nbt, NbtTag};
 use eyre::{Context as _, bail};
 use flate2::{
     Compression,
@@ -8,11 +9,7 @@ use jaq_core::{
     load::{Arena, Loader},
     unwrap_valr,
 };
-use nbtq_core::{
-    Val,
-    nbt::{Nbt, NbtTag},
-    print::WriterOptions,
-};
+use nbtq_core::{Val, print::WriterOptions};
 use poise::{CreateReply, serenity_prelude::CreateAttachment};
 use std::io::Write;
 use std::{fs::OpenOptions, io::Read};

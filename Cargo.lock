@@ -318,12 +318,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cesu8"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d43a04d8753f35258c91f8ec639f792891f748a1edbd759cf1dcea3382ad83c"
-
-[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -522,6 +516,7 @@ dependencies = [
  "bytes",
  "derive_more",
  "polonius-the-crab",
+ "serde",
  "simd_cesu8",
  "thiserror 2.0.18",
  "unicode_names2",
@@ -839,18 +834,6 @@ checksum = "7cd915d99f24784cdc19fd37ef22b97e3ff0ae756c7e492e9fbfe897d61e2aec"
 dependencies = [
  "indenter",
  "once_cell",
-]
-
-[[package]]
-name = "fastnbt"
-version = "2.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c075c8f2b92819bec6af26321830809f47574c72fd5b53ce81436bbac54bcea"
-dependencies = [
- "byteorder",
- "cesu8",
- "serde",
- "serde_bytes",
 ]
 
 [[package]]
@@ -1664,9 +1647,9 @@ dependencies = [
  "btoi",
  "chumsky",
  "color-eyre",
+ "crab_nbt",
  "dotenvy",
  "eyre",
- "fastnbt",
  "flate2",
  "flume",
  "jaq-core",
@@ -1770,12 +1753,11 @@ dependencies = [
 
 [[package]]
 name = "nbtq-core"
-version = "0.1.0"
-source = "git+https://github.com/Vonr/nbtq#c9d7399894b9f77c8b66aa54077ab0a5c9b2e673"
+version = "0.1.1"
+source = "git+https://github.com/Vonr/nbtq#abbe9d66fad59d32179436fd1d391db5332f8e3d"
 dependencies = [
  "anyhow",
  "bytes",
- "cfg-if",
  "crab_nbt",
  "jaq-core",
  "jaq-std",
@@ -2596,16 +2578,6 @@ checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
  "serde_derive",
-]
-
-[[package]]
-name = "serde_bytes"
-version = "0.11.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5d440709e79d88e51ac01c4b72fc6cb7314017bb7da9eeff678aa94c10e3ea8"
-dependencies = [
- "serde",
- "serde_core",
 ]
 
 [[package]]

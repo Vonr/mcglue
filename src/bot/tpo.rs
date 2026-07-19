@@ -1,11 +1,10 @@
-use eyre::bail;
+use crab_nbt::NbtTag;
+use eyre::{Context as _, bail};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use poise::{CreateReply, serenity_prelude::CreateAttachment};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::{collections::HashMap, fs::OpenOptions, io::Read};
-
-use fastnbt::Value;
 
 use super::Context;
 use crate::Error;
@@ -87,11 +86,11 @@ pub async fn tpo(
         let data = {
             let mut uncompressed = Vec::with_capacity(2048);
             let mut reader = GzDecoder::new(&*original_bytes);
-            reader.read_to_end(&mut uncompressed)?;
+            reader.read_to_end(&mut uncompressed).context("failed decompressing")?;
             uncompressed
         };
 
-        let mut data = fastnbt::from_bytes::<PlayerData>(&data)?;
+        let mut data = crab_nbt::serde::de::from_bytes::<PlayerData>(&mut data.as_slice()).context("failed deserializing")?;
 
         if data.pos.len() != 3 {
             bail!("Expected Pos to be a list of 3 64-bit floating point numbers but found {:?} instead.", data.pos);
@@ -113,7 +112,7 @@ pub async fn tpo(
             }
         }
 
-        let bytes = fastnbt::to_bytes(&data)?;
+        let bytes = crab_nbt::serde::ser::to_bytes(&data, String::new())?;
 
         let temp_path = path.with_added_extension(".tmp");
         let temp_file = OpenOptions::new()
@@ -170,7 +169,7 @@ pub struct PlayerData {
     pub root_vehicle: Option<RootVehicle>,
 
     #[serde(flatten)]
-    pub other: HashMap<String, Value>,
+    pub other: HashMap<String, NbtTag>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -179,7 +178,7 @@ pub struct RootVehicle {
     pub entity: Entity,
 
     #[serde(flatten)]
-    pub other: HashMap<String, Value>,
+    pub other: HashMap<String, NbtTag>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -189,5 +188,5 @@ pub struct Entity {
     pub dimension: String,
 
     #[serde(flatten)]
-    pub other: HashMap<String, Value>,
+    pub other: HashMap<String, NbtTag>,
 }

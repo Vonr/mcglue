@@ -14,13 +14,13 @@ chumsky = "0.13"
 color-eyre = "0.6"
 dotenvy = "0.15"
 eyre = "0.6"
-fastnbt = "2"
 flate2 = "1"
 flume = "0.12"
 jaq-core = "3.1.0"
 jaq-std = "3.0.1"
 menv = "0.2"
-nbtq-core = { git = "https://github.com/Vonr/nbtq", version = "0.1.0" }
+nbtq-core = { git = "https://github.com/Vonr/nbtq", version = "0.1.1" }
+crab_nbt = { git = "https://github.com/Vonr/CrabNBT.git", branch = "nbtq", features = ["serde"] }
 parking_lot = "0.12"
 poise = "0.6"
 reqwest = { version = "0.13", default-features = false, features = ["charset", "http2", "rustls", "system-proxy", "json"] }
