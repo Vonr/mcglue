@@ -12,7 +12,7 @@ services:
       VERSION: "1.21.1"
       EULA: "TRUE"
       JVM_OPTS: "-XX:+UseCompactObjectHeaders -XX:+UseZGC"
-    entrypoint: /image/scripts/mcglue-entrypoint
+      SERVER_RUNNER: "/mcglue mc-server-runner"
     volumes:
       - ./test-server:/data
       - ./mcglue-entrypoint:/image/scripts/mcglue-entrypoint
