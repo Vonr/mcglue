@@ -21,13 +21,14 @@ You can choose to install from source with `cargo install --git https://github.c
 mcglue <command>
 
 # Examples
-mcglue docker compose attach server
+mcglue java -jar server.jar -nogui
+mcglue ./start.sh
 
-# With custom entrypoint (see test.sh, compose.yml, mcglue-entrypoint)
+# Integrated with itzg/docker-minecraft-server (see test.sh and compose.yml)
 docker compose up
 ```
 
-See `test.sh`, `compose.yml`, and `mcglue-entrypoint` for a setup that uses [`itzg/docker-minecraft-server`](https://docker-minecraft-server.readthedocs.io/) via Docker Compose with a custom entrypoint.
+See `test.sh`, and `compose.yml` for a setup that uses [`itzg/docker-minecraft-server`](https://docker-minecraft-server.readthedocs.io/) via Docker Compose.
 
 ### Environment Variables
 - `$DISCORD_BOT_TOKEN` should be set to a Discord bot token
