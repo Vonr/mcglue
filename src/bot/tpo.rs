@@ -1,6 +1,7 @@
 use crab_nbt::NbtTag;
 use eyre::{Context as _, bail};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
+use poise::serenity_prelude::CreateAutocompleteResponse;
 use poise::{CreateReply, serenity_prelude::CreateAttachment};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
@@ -9,19 +10,19 @@ use std::{collections::HashMap, fs::OpenOptions, io::Read};
 use super::Context;
 use crate::{Error, GAME_VERSION};
 
-async fn autocomplete_dimension<'a>(
-    _ctx: Context<'_>,
-    partial: &'a str,
-) -> impl Iterator<Item = &'static str> + 'a {
+async fn autocomplete_dimension(_ctx: Context<'_>, partial: &str) -> CreateAutocompleteResponse {
     const KNOWN_DIMENSIONS: [&str; 3] = [
         "minecraft:overworld",
         "minecraft:the_nether",
         "minecraft:the_end",
     ];
 
-    KNOWN_DIMENSIONS
-        .into_iter()
-        .filter(move |s| s.contains(partial))
+    let mut response = CreateAutocompleteResponse::new();
+    for dim in KNOWN_DIMENSIONS.iter().filter(|dim| dim.contains(partial)) {
+        response = response.add_string_choice(*dim, *dim);
+    }
+
+    response
 }
 
 /// Teleport an offline player.

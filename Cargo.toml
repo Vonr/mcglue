@@ -22,7 +22,7 @@ menv = "0.2"
 nbtq-core = { git = "https://github.com/Vonr/nbtq", version = "0.1.1" }
 crab_nbt = { git = "https://github.com/Vonr/CrabNBT.git", branch = "nbtq", features = ["serde"] }
 parking_lot = "0.12"
-poise = "0.6"
+poise = "0.7"
 reqwest = { version = "0.13", default-features = false, features = ["charset", "http2", "rustls", "system-proxy", "json"] }
 rustyline = "18"
 serde = { version = "1", features = ["derive"] }

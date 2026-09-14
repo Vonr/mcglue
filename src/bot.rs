@@ -14,7 +14,7 @@ use std::{
 use parking_lot::Mutex;
 use poise::{
     CreateReply, FrameworkError,
-    serenity_prelude::{self as serenity, CacheHttp, GatewayIntents, RoleId},
+    serenity_prelude::{self as serenity, CreateAutocompleteResponse, GatewayIntents, RoleId},
 };
 use serde::Deserialize;
 use uuid::Uuid;
@@ -46,9 +46,7 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
                 list::list(),
                 nbtq::nbtq(),
             ],
-            event_handler: |ctx, event, framework, data| {
-                Box::pin(event_handler(ctx, event, framework, data))
-            },
+            event_handler: |framework, event| Box::pin(event_handler(framework, event)),
             on_error: |error| {
                 Box::pin(async move {
                     match error {
@@ -93,15 +91,15 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
 }
 
 async fn event_handler(
-    ctx: &serenity::Context,
+    framework: poise::FrameworkContext<'_, Data, Error>,
     event: &serenity::FullEvent,
-    _framework: poise::FrameworkContext<'_, Data, Error>,
-    data: &Data,
 ) -> Result<(), Error> {
     match event {
         serenity::FullEvent::Ready { data_about_bot, .. } => {
             eprintln!("Logged in as {}", data_about_bot.user.name);
-            data.bot_start_notifier
+            framework
+                .user_data
+                .bot_start_notifier
                 .lock()
                 .take()
                 .unwrap()
@@ -114,7 +112,7 @@ async fn event_handler(
             if new_message.channel_id.get() == crate::env::discord_channel_id() {
                 const PREFIX: &str = "[Discord] ";
                 let author = new_message
-                    .author_nick(ctx.http())
+                    .author_nick(&framework.serenity_context.http)
                     .await
                     .map(Cow::Owned)
                     .unwrap_or_else(|| new_message.author.display_name().into());
@@ -133,9 +131,9 @@ async fn event_handler(
                     .await?;
             } else if new_message.channel_id.get() == crate::env::discord_console_channel_id()
                 && new_message
-                    .member(&ctx.http)
+                    .member(&framework.serenity_context.http)
                     .await
-                    .is_ok_and(|m| m.roles.contains(&data.operator_role_id))
+                    .is_ok_and(|m| m.roles.contains(&framework.user_data.operator_role_id))
             {
                 crate::command(new_message.content.as_bytes()).await?;
             }
@@ -197,9 +195,10 @@ async fn autocomplete_path(
     ctx: Context<'_>,
     partial: &str,
     condition: impl FnMut(&PathBuf) -> bool,
-) -> Vec<String> {
+) -> CreateAutocompleteResponse {
+    let mut response = CreateAutocompleteResponse::new();
     if !matches!(is_operator(ctx).await, Ok(true)) {
-        return Vec::new();
+        return response;
     }
 
     let mut path = PathBuf::from(partial);
@@ -207,7 +206,7 @@ async fn autocomplete_path(
         .components()
         .any(|c| !matches!(c, std::path::Component::Normal(_)))
     {
-        return Vec::new();
+        return response;
     }
 
     let Some(mut root) = crate::server_directory()
@@ -215,14 +214,14 @@ async fn autocomplete_path(
         .ok()
         .and_then(|d| d.to_str().map(|s| s.to_string()))
     else {
-        return Vec::new();
+        return response;
     };
 
     root.push('/');
 
     if matches!(std::fs::exists(&path), Ok(true)) {
         if !path.is_dir() {
-            return vec![partial.to_string()];
+            return response.add_string_choice(partial, partial);
         }
     } else {
         if let Some(parent) = path.parent() {
@@ -232,7 +231,7 @@ async fn autocomplete_path(
         };
     }
 
-    WalkDir::new(path)
+    for e in WalkDir::new(path)
         .max_depth(1)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -251,14 +250,19 @@ async fn autocomplete_path(
             })
         })
         .filter(|e| !e.starts_with('/') && e.contains(partial))
-        .collect()
+        .take(25)
+    {
+        response = response.add_string_choice(e.clone(), e);
+    }
+
+    response
 }
 
-pub async fn autocomplete_path_any(ctx: Context<'_>, partial: &str) -> Vec<String> {
+pub async fn autocomplete_path_any(ctx: Context<'_>, partial: &str) -> CreateAutocompleteResponse {
     autocomplete_path(ctx, partial, |_| true).await
 }
 
-pub async fn autocomplete_path_nbt(ctx: Context<'_>, partial: &str) -> Vec<String> {
+pub async fn autocomplete_path_nbt(ctx: Context<'_>, partial: &str) -> CreateAutocompleteResponse {
     autocomplete_path(ctx, partial, |e| {
         e.extension().is_some_and(|e| {
             e.to_str()

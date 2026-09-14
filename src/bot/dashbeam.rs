@@ -1,9 +1,6 @@
-use std::{
-    sync::atomic::Ordering,
-    time::{Duration, Instant},
-};
+use std::{sync::atomic::Ordering, time::Duration};
 
-use dashbeam_engine::{ReceiveOptions, SendOptions, storage::temp_dir};
+use dashbeam_engine::{ReceiveOptions, SendOptions};
 use eyre::bail;
 use iroh::RelayMode;
 use poise::CreateReply;
