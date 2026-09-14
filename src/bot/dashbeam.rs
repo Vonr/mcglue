@@ -14,7 +14,7 @@ use crate::{Result, SafeJoin};
     slash_command,
     guild_only,
     check = "super::is_operator",
-    subcommands("download", "upload")
+    subcommands("get", "put")
 )]
 pub async fn dashbeam(_ctx: Context<'_>) -> Result<()> {
     Ok(())
@@ -22,7 +22,7 @@ pub async fn dashbeam(_ctx: Context<'_>) -> Result<()> {
 
 /// Download files from the server via dashbeam
 #[poise::command(slash_command, guild_only, check = "super::is_operator")]
-pub async fn download(
+pub async fn get(
     ctx: Context<'_>,
     #[description = "Path to the file or folder"]
     #[autocomplete = "super::autocomplete_path_any"]
@@ -107,7 +107,7 @@ pub async fn download(
 
 /// Upload files to the server via dashbeam
 #[poise::command(slash_command, guild_only, check = "super::is_operator")]
-pub async fn upload(
+pub async fn put(
     ctx: Context<'_>,
     #[description = "DashBeam ticket"] ticket: String,
     #[description = "Path to the file or folder"]
