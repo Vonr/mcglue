@@ -32,12 +32,13 @@ pub async fn download(
             let metadata = file.metadata()?;
             let is_file = metadata.is_file();
 
-            let mut buf = Vec::with_capacity(metadata.len() as usize);
+            let mut buf = Vec::new();
 
             if is_file {
                 if metadata.len() > 10 << 20 {
                     bail!("Requested content too large");
                 }
+                buf.reserve(metadata.len() as usize);
                 file.read_to_end(&mut buf)?;
             } else if metadata.is_dir() {
                 zip_dir(&mut buf, &path, CompressionMethod::Zstd)?;
