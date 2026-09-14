@@ -215,7 +215,7 @@ async fn main() -> Result<()> {
         .map_err(|e| eyre!("Could not set LIST_SENDER to a broadcast channel sender: {e:?}"))?;
 
     let mut args = std::env::args();
-    let binary_name = args.next().unwrap_or_else(|| String::from("gluemc"));
+    let binary_name = args.next().unwrap_or_else(|| String::from("mcglue"));
 
     eprintln!("Starting Discord bot");
     let (bot_started_tx, bot_started_rx) = tokio::sync::oneshot::channel::<()>();
