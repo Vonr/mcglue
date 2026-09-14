@@ -59,11 +59,12 @@ pub async fn download(
         bail!("Could not send file");
     };
 
-    ctx.send(CreateReply::default().ephemeral(true).content(format!(
+    let response = ctx.send(CreateReply::default().ephemeral(true).content(format!(
         "Requested content from path {path:?}\nTicket: [{ticket}](<https://app.dashbeam.net/receive?ticket={ticket}>)",
         ticket = result.ticket
     )))
     .await?;
+    ctx.defer_ephemeral().await?;
 
     let peers = result.completed_peers.clone();
 
@@ -75,19 +76,25 @@ pub async fn download(
     .await
     {
         Ok(_) => {
-            ctx.send(CreateReply::default().ephemeral(true).content(format!(
-                "File received by {} peer(s)",
-                result.completed_peers.load(Ordering::Relaxed)
-            )))
-            .await?;
+            response
+                .edit(
+                    ctx,
+                    CreateReply::default().ephemeral(true).content(format!(
+                        "File received by {} peer(s)",
+                        result.completed_peers.load(Ordering::Relaxed)
+                    )),
+                )
+                .await?;
         }
         Err(_) => {
-            ctx.send(
-                CreateReply::default()
-                    .ephemeral(true)
-                    .content("Shutting down service due to timeout".to_string()),
-            )
-            .await?;
+            response
+                .edit(
+                    ctx,
+                    CreateReply::default()
+                        .ephemeral(true)
+                        .content("DashBeam upload service timed out".to_string()),
+                )
+                .await?;
         }
     };
 
@@ -107,10 +114,18 @@ pub async fn upload(
     #[autocomplete = "super::autocomplete_path_any"]
     path: String,
 ) -> Result<()> {
-    ctx.defer_ephemeral().await?;
     let path = ctx.data().server_directory.safe_join(path)?;
 
     let (_tx, rx) = tokio::sync::oneshot::channel();
+
+    let response = ctx
+        .send(
+            CreateReply::default()
+                .ephemeral(true)
+                .content("Receiving file".to_string()),
+        )
+        .await?;
+    ctx.defer_ephemeral().await?;
 
     let Ok(result) = dashbeam_engine::receive::download(
         ticket,
@@ -126,12 +141,14 @@ pub async fn upload(
         bail!("Could not receive file");
     };
 
-    ctx.send(
-        CreateReply::default()
-            .ephemeral(true)
-            .content(result.message.to_string()),
-    )
-    .await?;
+    response
+        .edit(
+            ctx,
+            CreateReply::default()
+                .ephemeral(true)
+                .content(result.message.to_string()),
+        )
+        .await?;
 
     Ok(())
 }
