@@ -7,7 +7,7 @@ use std::io::Write;
 use std::{collections::HashMap, fs::OpenOptions, io::Read};
 
 use super::Context;
-use crate::Error;
+use crate::{Error, GAME_VERSION};
 
 async fn autocomplete_dimension<'a>(
     _ctx: Context<'_>,
@@ -55,12 +55,24 @@ pub async fn tpo(
 
     let mut filename = uuid.as_hyphenated().to_string();
     filename.push_str(".dat");
-    let path = {
-        ctx.data()
+    let path = match GAME_VERSION.get() {
+        None => bail!("Server has not started yet"),
+        Some(v)
+            if version_compare::compare_to(v, "26.1", version_compare::Cmp::Ge).unwrap_or(true) =>
+        {
+            ctx.data()
+                .server_directory
+                .join("world")
+                .join("players")
+                .join("data")
+                .join(&filename)
+        }
+        Some(_) => ctx
+            .data()
             .server_directory
             .join("world")
             .join("playerdata")
-            .join(&filename)
+            .join(&filename),
     };
 
     if !path.try_exists().unwrap_or(false) {

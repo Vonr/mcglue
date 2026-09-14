@@ -48,6 +48,8 @@ static ADVANCEMENTS: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::n
 
 static COMMAND_CHANNEL: OnceLock<flume::Sender<Box<[u8]>>> = OnceLock::new();
 
+pub static GAME_VERSION: OnceLock<&'static str> = OnceLock::new();
+
 #[derive(Clone, Copy, Debug)]
 enum DeathMessageComponent {
     Victim,
@@ -435,9 +437,13 @@ async fn main() -> Result<()> {
                         .await;
                 }
                 Log::Starting(StartingLog { version, .. }) => {
-                    let version = version.to_str_lossy().into_owned();
+                    let version = version.to_str_lossy().into_owned().leak();
 
                     tokio::spawn(async move {
+                        if GAME_VERSION.set(version).is_err() {
+                            bail!("Starting log already seen once");
+                        }
+
                         let lang_file_name = {
                             let mut name = language();
                             name.push_str(".json");
