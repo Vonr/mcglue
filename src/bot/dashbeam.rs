@@ -68,7 +68,7 @@ pub async fn get(
 
     let peers = result.completed_peers.clone();
 
-    match tokio::time::timeout(Duration::from_secs(60), async move {
+    match tokio::time::timeout(Duration::from_secs(600), async move {
         while peers.load(Ordering::Relaxed) < 1 {
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
