@@ -34,7 +34,6 @@ zip = "9.0.0-pre3"
 version-compare = "0.2"
 dashbeam-engine = { package = "engine", git = "https://github.com/tonyantony300/dashbeam", version = "0.1.0" }
 iroh = "1"
-tempfile = "3"
 # console-subscriber = "0.5"
 
 [profile.release]
