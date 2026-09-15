@@ -32,7 +32,7 @@ uuid = { version = "1", features = ["v3", "v4"] }
 walkdir = "2"
 zip = "9.0.0-pre3"
 version-compare = "0.2"
-dashbeam-engine = { package = "engine", git = "https://github.com/tonyantony300/dashbeam", version = "0.1.0" }
+dashbeam-engine = { package = "engine", git = "https://github.com/tonyantony300/dashbeam", rev = "ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77" }
 iroh = "1"
 # console-subscriber = "0.5"
 

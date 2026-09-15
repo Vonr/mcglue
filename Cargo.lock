@@ -1387,7 +1387,7 @@ checksum = "869b0adbda23651a9c5c0c3d270aac9fcb52e8622a8f2b17e57802d7791962f2"
 [[package]]
 name = "engine"
 version = "0.1.0"
-source = "git+https://github.com/tonyantony300/dashbeam#ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77"
+source = "git+https://github.com/tonyantony300/dashbeam?rev=ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77#ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77"
 dependencies = [
  "clap",
  "console",
@@ -2963,7 +2963,6 @@ dependencies = [
  "rustyline",
  "serde",
  "serde_json",
- "tempfile",
  "tokio",
  "uuid",
  "version-compare",
@@ -4798,7 +4797,7 @@ checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
 [[package]]
 name = "sendme-native"
 version = "0.1.0"
-source = "git+https://github.com/tonyantony300/dashbeam#ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77"
+source = "git+https://github.com/tonyantony300/dashbeam?rev=ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77#ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77"
 dependencies = [
  "anyhow",
  "data-encoding",
@@ -4822,7 +4821,7 @@ dependencies = [
 [[package]]
 name = "sendme-protocol"
 version = "0.1.0"
-source = "git+https://github.com/tonyantony300/dashbeam#ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77"
+source = "git+https://github.com/tonyantony300/dashbeam?rev=ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77#ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4844,7 +4843,7 @@ dependencies = [
 [[package]]
 name = "sendme-wasm-io"
 version = "0.1.0"
-source = "git+https://github.com/tonyantony300/dashbeam#ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77"
+source = "git+https://github.com/tonyantony300/dashbeam?rev=ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77#ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77"
 dependencies = [
  "anyhow",
  "getrandom 0.3.4",
