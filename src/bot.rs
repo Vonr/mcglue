@@ -1,6 +1,5 @@
+mod blob;
 mod crash;
-mod dashbeam;
-mod download;
 mod list;
 mod nbtq;
 mod tpo;
@@ -41,8 +40,8 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
             commands: vec![
                 crash::crash(),
                 tpo::tpo(),
-                download::download(),
-                dashbeam::dashbeam(),
+                blob::download(),
+                blob::upload(),
                 list::list(),
                 nbtq::nbtq(),
             ],
@@ -270,4 +269,11 @@ pub async fn autocomplete_path_nbt(ctx: Context<'_>, partial: &str) -> CreateAut
         })
     })
     .await
+}
+
+pub async fn autocomplete_path_directory(
+    ctx: Context<'_>,
+    partial: &str,
+) -> CreateAutocompleteResponse {
+    autocomplete_path(ctx, partial, |e| e.is_dir()).await
 }

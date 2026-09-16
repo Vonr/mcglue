@@ -30,10 +30,15 @@ serde_json = "1"
 tokio = { version = "1", default-features = false, features = ["macros", "parking_lot", "process", "rt-multi-thread"] }
 uuid = { version = "1", features = ["v3", "v4"] }
 walkdir = "2"
-zip = "9.0.0-pre3"
+zip = { version = "9.0.0-pre3", default-features = false, features = ["zstd"] }
 version-compare = "0.2"
-dashbeam-engine = { package = "engine", git = "https://github.com/tonyantony300/dashbeam", rev = "ccc1eb8bcf1ee7d30cd2a85f1409edd46eac4b77" }
-iroh = "1"
+iroh = { version = "1", default-features = false, features = ["tls-ring", "portmapper"] }
+iroh-blobs = { version = "0.103", default-features = false, features = ["fs-store", "hide-proto-docs"] }
+rand = "0.10"
+tempfile = "3"
+n0-future = "0.3"
+human_format = "1"
+humansize = { version = "2", features = ["no_alloc"] }
 # console-subscriber = "0.5"
 
 [profile.release]
