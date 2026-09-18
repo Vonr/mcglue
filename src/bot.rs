@@ -1,5 +1,5 @@
-mod blob;
 mod crash;
+mod files;
 mod list;
 mod nbtq;
 mod tpo;
@@ -40,8 +40,9 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
             commands: vec![
                 crash::crash(),
                 tpo::tpo(),
-                blob::download(),
-                blob::upload(),
+                files::download(),
+                files::upload(),
+                files::delete(),
                 list::list(),
                 nbtq::nbtq(),
             ],
