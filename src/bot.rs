@@ -1,5 +1,7 @@
 mod crash;
 mod files;
+#[cfg(feature = "iroh")]
+mod iroh;
 mod list;
 mod nbtq;
 mod tpo;
@@ -40,8 +42,10 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
             commands: vec![
                 crash::crash(),
                 tpo::tpo(),
-                files::download(),
-                files::upload(),
+                #[cfg(feature = "iroh")]
+                iroh::download(),
+                #[cfg(feature = "iroh")]
+                iroh::upload(),
                 files::delete(),
                 list::list(),
                 nbtq::nbtq(),

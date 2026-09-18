@@ -4,14 +4,12 @@ mod jar;
 mod parsing;
 
 use crate::parsing::*;
-use async_signal::{Signal, Signals};
 use eyre::{ContextCompat, ensure, eyre};
-use rustyline::error::ReadlineError;
 use std::{
     borrow::Cow,
     collections::HashMap,
     fs::OpenOptions,
-    io::Read,
+    io::{BufRead, Read},
     path::{Path, PathBuf},
     process::Stdio,
     sync::{Arc, OnceLock},
@@ -23,7 +21,7 @@ use zip::ZipArchive;
 use bstr::ByteSlice;
 use chumsky::prelude::*;
 use poise::serenity_prelude::{
-    CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook, colours, futures::StreamExt,
+    CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook, colours,
 };
 
 type Error = eyre::Error;
@@ -112,11 +110,42 @@ async fn main() -> Result<()> {
     }
 
     let (signal_fin_tx, signal_fin_rx) = tokio::sync::oneshot::channel::<()>();
-    let mut signals = Signals::new([Signal::Term, Signal::Quit, Signal::Int])?;
-    tokio::task::spawn(async move {
-        signals.next().await;
+    tokio::task::spawn(async {
+        cfg_select! {
+            unix => {
+                use tokio::signal::unix::{SignalKind, signal};
+
+                let mut term = signal(SignalKind::terminate())?;
+                let mut quit = signal(SignalKind::quit())?;
+                let mut int = signal(SignalKind::interrupt())?;
+
+                tokio::select! {
+                    _ = term.recv() => {}
+                    _ = quit.recv() => {}
+                    _ = int.recv() => {}
+                }
+            },
+            windows => {
+                use tokio::signal::windows::{ctrl_c, ctrl_close, ctrl_logoff, ctrl_shutdown};
+
+                let mut c = ctrl_c()?;
+                let mut close = ctrl_close()?;
+                let mut logoff = ctrl_logoff()?;
+                let mut shutdown = ctrl_shutdown()?;
+
+                tokio::select! {
+                    _ = c.recv() => {}
+                    _ = close.recv() => {}
+                    _ = logoff.recv() => {}
+                    _ = shutdown.recv() => {}
+                }
+            },
+        };
+
         eprintln!("Received exit signal");
         let _ = signal_fin_tx.send(());
+
+        Ok::<_, Error>(())
     });
 
     let token = env::discord_bot_token();
@@ -648,35 +677,18 @@ async fn main() -> Result<()> {
         Ok::<(), Error>(())
     });
 
-    let (input_fin_tx, input_fin_rx) = tokio::sync::oneshot::channel::<()>();
     std::thread::spawn(|| {
-        let mut editor = rustyline::DefaultEditor::new().unwrap();
-
-        loop {
-            match editor.readline("") {
-                Ok(line) => {
-                    let _ = editor.add_history_entry(line.as_str());
-                    if let Err(e) = command_sync(line.as_bytes()) {
-                        eprintln!("Error sending command: {e:?}");
-                    }
-                }
-                Err(ReadlineError::Interrupted) => {
-                    eprintln!("Received CTRL+C, exiting.");
-                    break;
-                }
-                Err(ReadlineError::Eof) => {
-                    eprintln!("Received CTRL+D, exiting.");
-                    break;
-                }
-                Err(e) => eprintln!("Error reading line: {e:?}"),
+        let mut stdin = std::io::stdin().lock();
+        let mut line = String::new();
+        while let Ok(size) = stdin.read_line(&mut line) {
+            if let Err(e) = command_sync(&line.as_bytes()[..size.saturating_sub(1)]) {
+                eprintln!("Error sending command: {e:?}");
             }
+            line.clear();
         }
-
-        let _ = input_fin_tx.send(());
     });
 
     tokio::select! {
-        _ = input_fin_rx => {}
         _ = signal_fin_rx => {}
         Ok(_) = process.wait() => {}
     }

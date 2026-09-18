@@ -24,21 +24,27 @@ crab_nbt = { git = "https://github.com/Vonr/CrabNBT.git", branch = "nbtq", featu
 parking_lot = "0.12"
 poise = "0.7"
 reqwest = { version = "0.13", default-features = false, features = ["charset", "http2", "rustls", "system-proxy", "json"] }
-rustyline = "18"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", default-features = false, features = ["macros", "parking_lot", "process", "rt-multi-thread"] }
+tokio = { version = "1", default-features = false, features = ["macros", "parking_lot", "process", "rt-multi-thread", "signal"] }
 uuid = { version = "1", features = ["v3", "v4"] }
 walkdir = "2"
 zip = { version = "9.0.0-pre3", default-features = false, features = ["zstd"] }
 version-compare = "0.2"
-iroh = { version = "1", default-features = false, features = ["tls-ring", "portmapper"] }
-iroh-blobs = { version = "0.103", default-features = false, features = ["fs-store", "hide-proto-docs"] }
+iroh = { version = "1", default-features = false, features = ["tls-ring", "portmapper"], optional = true }
+iroh-blobs = { version = "0.103", default-features = false, features = ["fs-store", "hide-proto-docs"], optional = true }
 rand = "0.10"
 tempfile = "3"
-n0-future = "0.3"
+n0-future = { version = "0.3", optional = true }
 humansize = { version = "2", features = ["no_alloc"] }
+serenity = { version = "0.12.5", default-features = false, features = ["cache", "collector", "rustls_backend"] }
 # console-subscriber = "0.5"
+
+[features]
+default = ["iroh"]
+full = ["default"]
+
+iroh = ["dep:iroh", "dep:iroh-blobs", "dep:n0-future"]
 
 [profile.release]
 opt-level = 3
@@ -62,3 +68,7 @@ pkg-fmt = "zip"
 
 [package.metadata.binstall.overrides.x86_64-pc-windows-gnu]
 pkg-fmt = "zip"
+
+[package.metadata.docs.rs]
+features = ["full"]
+rustdoc-args = ["--cfg", "docsrs"]
