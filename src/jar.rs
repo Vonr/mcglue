@@ -1,12 +1,10 @@
-use eyre::bail;
+use eyre::ensure;
 
 use crate::Result;
 use std::path::{Path, PathBuf};
 
 pub fn files(directory: &Path) -> Result<impl Iterator<Item = PathBuf>> {
-    if !directory.is_dir() {
-        bail!("`directory` must be a directory");
-    }
+    ensure!(directory.is_dir(), "{directory:?} is not a directory");
 
     Ok(directory
         .read_dir()?

@@ -1,5 +1,5 @@
 use crab_nbt::NbtTag;
-use eyre::{Context as _, bail};
+use eyre::{Context as _, ContextCompat, bail, ensure};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use poise::serenity_prelude::CreateAutocompleteResponse;
 use poise::{CreateReply, serenity_prelude::CreateAttachment};
@@ -56,29 +56,27 @@ pub async fn tpo(
 
     let mut filename = uuid.as_hyphenated().to_string();
     filename.push_str(".dat");
-    let path = match GAME_VERSION.get() {
-        None => bail!("Server has not started yet"),
-        Some(v)
-            if version_compare::compare_to(v, "26.1", version_compare::Cmp::Ge).unwrap_or(true) =>
-        {
+    let version = GAME_VERSION.get().context("Server has not started yet")?;
+    let path =
+        if version_compare::compare_to(version, "26.1", version_compare::Cmp::Ge).unwrap_or(true) {
             ctx.data()
                 .server_directory
                 .join("world")
                 .join("players")
                 .join("data")
                 .join(&filename)
-        }
-        Some(_) => ctx
-            .data()
-            .server_directory
-            .join("world")
-            .join("playerdata")
-            .join(&filename),
-    };
+        } else {
+            ctx.data()
+                .server_directory
+                .join("world")
+                .join("playerdata")
+                .join(&filename)
+        };
 
-    if !path.try_exists().unwrap_or(false) {
-        bail!("{path:?} does not exist. Has this player joined the game before?");
-    }
+    ensure!(
+        path.try_exists().unwrap_or(false),
+        "{path:?} does not exist. Has this player joined the game before?"
+    );
 
     let (original_bytes, data) = tokio::task::spawn_blocking(move || {
         let mut file = OpenOptions::new()
@@ -89,9 +87,7 @@ pub async fn tpo(
             .open(&path)
             .map_err(Error::from)?;
 
-        if file.try_lock().is_err() {
-            bail!("{path:?} is already open. Is the player currently online?");
-        }
+        ensure!(file.try_lock().is_ok(), "{path:?} is already open. Is the player currently online?");
 
         let mut original_bytes = Vec::with_capacity(2048);
         file.read_to_end(&mut original_bytes)?;
@@ -105,9 +101,7 @@ pub async fn tpo(
 
         let mut data = crab_nbt::serde::de::from_bytes::<PlayerData>(&mut data.as_slice()).context("failed deserializing")?;
 
-        if data.pos.len() != 3 {
-            bail!("Expected Pos to be a list of 3 64-bit floating point numbers but found {:?} instead.", data.pos);
-        }
+        ensure!(data.pos.len() == 3, "Expected Pos to be a list of 3 64-bit floating point numbers but found {:?} instead.", data.pos);
 
         data.pos = vec![x, y, z];
         if let Some(ref dimension) = dimension {
@@ -115,9 +109,7 @@ pub async fn tpo(
         }
 
         if let Some(vehicle) = &mut data.root_vehicle {
-            if vehicle.entity.pos.len() != 3 {
-                bail!("Expected RootVehicle.Entity.Pos to be a list of 3 64-bit floating point numbers but found {:?} instead.", vehicle.entity.pos);
-            }
+            ensure!(vehicle.entity.pos.len() == 3, "Expected RootVehicle.Entity.Pos to be a list of 3 64-bit floating point numbers but found {:?} instead.", vehicle.entity.pos);
 
             vehicle.entity.pos = vec![x, y, z];
             if let Some(dimension) = dimension {

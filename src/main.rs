@@ -5,7 +5,7 @@ mod parsing;
 
 use crate::parsing::*;
 use async_signal::{Signal, Signals};
-use eyre::{bail, eyre};
+use eyre::{ContextCompat, ensure, eyre};
 use rustyline::error::ReadlineError;
 use std::{
     borrow::Cow,
@@ -257,13 +257,11 @@ async fn main() -> Result<()> {
             .spawn()?
     };
 
-    let Some(stdout) = process.stdout.take() else {
-        bail!("Could not get child stdout");
-    };
-
-    let Some(mut stdin) = process.stdin.take() else {
-        bail!("Could not get child stdin")
-    };
+    let stdout = process
+        .stdout
+        .take()
+        .context("Could not get child stdout")?;
+    let mut stdin = process.stdin.take().context("Could not get child stdin")?;
 
     let (tx, rx) = flume::unbounded();
     COMMAND_CHANNEL.set(tx).unwrap();
@@ -440,9 +438,10 @@ async fn main() -> Result<()> {
                     let version = version.to_str_lossy().into_owned().leak();
 
                     tokio::spawn(async move {
-                        if GAME_VERSION.set(version).is_err() {
-                            bail!("Starting log already seen once");
-                        }
+                        ensure!(
+                            GAME_VERSION.set(version).is_ok(),
+                            "Starting log already seen once"
+                        );
 
                         let lang_file_name = {
                             let mut name = language();
@@ -732,9 +731,10 @@ pub trait SafeJoin {
 impl SafeJoin for Path {
     fn safe_join<P: AsRef<Path>>(&self, path: P) -> Result<PathBuf> {
         let new = self.join(path).canonicalize()?;
-        if !new.starts_with(self.canonicalize()?) {
-            bail!("Attempted traversal above root {self:?}");
-        }
+        ensure!(
+            new.starts_with(self.canonicalize()?),
+            "Attempted traversal above root {self:?}"
+        );
 
         Ok(new)
     }

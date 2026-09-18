@@ -1,5 +1,5 @@
 use crab_nbt::{Nbt, NbtTag};
-use eyre::{Context as _, bail};
+use eyre::{Context as _, bail, ensure};
 use flate2::{
     Compression,
     write::{GzDecoder, GzEncoder},
@@ -34,9 +34,10 @@ pub async fn nbtq(
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "original".into());
 
-    if !path.try_exists().unwrap_or(false) {
-        bail!("{path:?} does not exist.");
-    }
+    ensure!(
+        path.try_exists().unwrap_or(false),
+        "{path:?} does not exist."
+    );
 
     let filter = filter.unwrap_or_else(|| String::from("."));
 
@@ -49,9 +50,10 @@ pub async fn nbtq(
             .open(&path)
             .map_err(Error::from)?;
 
-        if file.try_lock().is_err() {
-            bail!("{path:?} is already open. Is the player currently online?");
-        }
+        ensure!(
+            file.try_lock().is_ok(),
+            "{path:?} is already open. Is the player currently online?"
+        );
 
         let mut raw_input = Vec::new();
         file.read_to_end(&mut raw_input)?;
