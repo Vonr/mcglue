@@ -1,4 +1,4 @@
-use std::{num::NonZero, os::unix::fs::MetadataExt, path::PathBuf, str::FromStr, time::Duration};
+use std::{num::NonZero, path::PathBuf, str::FromStr, time::Duration};
 
 use eyre::{ContextCompat, bail, ensure};
 use humansize::SizeFormatter;
@@ -331,7 +331,7 @@ pub async fn delete(
     if metadata.is_dir() {
         let mut total_size = 0;
         for file in WalkDir::new(&path) {
-            total_size += file?.metadata()?.size();
+            total_size += file?.metadata()?.len();
             count += 1;
         }
         size_formatter = SizeFormatter::new(total_size, humansize::BINARY);
@@ -347,7 +347,7 @@ pub async fn delete(
             )
             .await?;
     } else {
-        size_formatter = SizeFormatter::new(metadata.size(), humansize::BINARY);
+        size_formatter = SizeFormatter::new(metadata.len(), humansize::BINARY);
         response = ctx
             .send(
                 CreateReply::default()
