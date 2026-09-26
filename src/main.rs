@@ -111,8 +111,9 @@ async fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    let (signal_fin_tx, signal_fin_rx) = tokio::sync::oneshot::channel::<()>();
-    tokio::task::spawn(async {
+    let signal_cancel = CancellationToken::new();
+    let signal_cancel_clone = signal_cancel.clone();
+    tokio::task::spawn(async move {
         cfg_select! {
             unix => {
                 use tokio::signal::unix::{SignalKind, signal};
@@ -145,7 +146,7 @@ async fn main() -> Result<()> {
         };
 
         eprintln!("Received exit signal");
-        let _ = signal_fin_tx.send(());
+        signal_cancel_clone.cancel();
 
         Ok::<_, Error>(())
     });
@@ -166,7 +167,7 @@ async fn main() -> Result<()> {
         let logger = tokio::task::spawn(async move {
             let mut buf = String::with_capacity(4096);
 
-            while rx.sender_count() > 0 || !rx.is_empty() {
+            while !buf.is_empty() || rx.sender_count() > 0 || !rx.is_empty() {
                 if !buf.is_empty() {
                     let s = buf.chars().collect::<Vec<_>>();
                     let mut s = s.as_slice();
@@ -730,10 +731,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    tokio::select! {
-        _ = signal_fin_rx => {}
-        Ok(_) = process.wait() => {}
-    }
+    let _ = signal_cancel.run_until_cancelled(process.wait()).await;
 
     if process.id().is_some() {
         command(*b"stop").await?;
