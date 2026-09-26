@@ -16,6 +16,7 @@ use std::{
     time::Duration,
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio_util::sync::CancellationToken;
 use zip::ZipArchive;
 
 use bstr::ByteSlice;
@@ -97,7 +98,8 @@ pub fn language() -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // console_subscriber::init();
+    #[cfg(feature = "tokio-console")]
+    console_subscriber::init();
     color_eyre::install()?;
 
     let _ = dotenvy::dotenv();
@@ -305,6 +307,8 @@ async fn main() -> Result<()> {
         Ok(())
     });
 
+    let log_cancel = CancellationToken::new();
+    let log_cancel_clone = log_cancel.clone();
     let log_reader = tokio::task::spawn(async move {
         let http = Http::new(&token);
         let webhook = Webhook::from_url(&http, &crate::env::discord_webhook_url()).await?;
@@ -312,15 +316,21 @@ async fn main() -> Result<()> {
         let mut input = BufReader::new(stdout);
         let mut buf = Vec::with_capacity(16384);
 
-        while let Ok(n) = input.read_until(b'\n', &mut buf).await {
-            if n == 0 {
-                continue;
-            }
+        loop {
+            let n = match log_cancel_clone
+                .run_until_cancelled(input.read_until(b'\n', &mut buf))
+                .await
+            {
+                Some(Ok(0)) => continue,
+                Some(Ok(n)) => n,
+                Some(Err(_)) => break,
+                None => break,
+            };
 
             let s = buf[..n].to_str_lossy();
             print!("{s}");
 
-            log_to_console.send(s.into())?;
+            log_to_console.send_async(s.into()).await?;
 
             let parsed = {
                 let parser = Log::parser();
@@ -417,7 +427,7 @@ async fn main() -> Result<()> {
                                             CreateEmbedAuthor::new(format!("{sender} left"))
                                                 .icon_url(&avatar),
                                         )
-                                        .colour(colours::branding::RED),
+                                        .colour(colours::roles::GOLD),
                                 ),
                         )
                         .await;
@@ -643,6 +653,38 @@ async fn main() -> Result<()> {
                         Ok::<_, Error>(())
                     });
                 }
+                Log::Done => {
+                    let _ = webhook
+                        .execute(
+                            &http,
+                            false,
+                            ExecuteWebhook::new()
+                                .username("Console")
+                                .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
+                                .embed(
+                                    CreateEmbed::new()
+                                        .author(CreateEmbedAuthor::new("Server started"))
+                                        .colour(colours::branding::GREEN),
+                                ),
+                        )
+                        .await;
+                }
+                Log::Stopping => {
+                    let _ = webhook
+                        .execute(
+                            &http,
+                            false,
+                            ExecuteWebhook::new()
+                                .username("Console")
+                                .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
+                                .embed(
+                                    CreateEmbed::new()
+                                        .author(CreateEmbedAuthor::new("Stopping server"))
+                                        .colour(colours::roles::GOLD),
+                                ),
+                        )
+                        .await;
+                }
                 Log::Death(DeathLog { victim, .. }) => {
                     let sender: &str = &victim.to_str_lossy();
 
@@ -693,32 +735,36 @@ async fn main() -> Result<()> {
         Ok(_) = process.wait() => {}
     }
 
-    if !matches!(process.try_wait(), Ok(Some(_))) {
-        eprintln!("Stopping server");
-        webhook
-            .execute(
-                &http,
-                false,
-                ExecuteWebhook::new()
-                    .username("Console")
-                    .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
-                    .embed(
-                        CreateEmbed::new()
-                            .author(CreateEmbedAuthor::new("Stopping server"))
-                            .colour(colours::branding::RED),
-                    ),
-            )
-            .await?;
+    if process.id().is_some() {
         command(*b"stop").await?;
         let _ = process.wait().await;
     }
 
-    eprintln!("Stopping wrapper");
-
     let _ = process.wait().await;
     tokio::time::sleep(Duration::from_secs(1)).await;
-    log_reader.abort();
+    let _ = webhook
+        .execute(
+            &http,
+            false,
+            ExecuteWebhook::new()
+                .username("Console")
+                .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
+                .embed(
+                    CreateEmbed::new()
+                        .author(CreateEmbedAuthor::new("Server stopped"))
+                        .colour(colours::branding::RED),
+                ),
+        )
+        .await;
+    eprintln!("Stopped server");
+
+    eprintln!("Stopping wrapper");
+
+    log_cancel.cancel();
+    log_reader.await??;
+
     logger.await?;
+
     join_set.abort_all();
 
     eprintln!("Stopped wrapper");

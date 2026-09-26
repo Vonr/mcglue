@@ -27,6 +27,7 @@ reqwest = { version = "0.13", default-features = false, features = ["charset", "
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", default-features = false, features = ["macros", "parking_lot", "process", "rt-multi-thread", "signal"] }
+tokio-util = { version = "0.7", default-features = false, features = [] }
 uuid = { version = "1", features = ["v3", "v4"] }
 walkdir = "2"
 zip = { version = "9.0.0-pre3", default-features = false, features = ["zstd"] }
@@ -38,13 +39,14 @@ tempfile = "3"
 n0-future = { version = "0.3", optional = true }
 humansize = { version = "2", features = ["no_alloc"] }
 serenity = { version = "0.12.5", default-features = false, features = ["cache", "collector", "rustls_backend"] }
-# console-subscriber = "0.5"
+console-subscriber = { version = "0.5", optional = true }
 
 [features]
 default = ["iroh"]
 full = ["default"]
 
 iroh = ["dep:iroh", "dep:iroh-blobs", "dep:n0-future"]
+tokio-console = ["dep:console-subscriber"]
 
 [profile.release]
 opt-level = 3

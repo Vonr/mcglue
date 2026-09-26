@@ -40,6 +40,8 @@ enum PartialLog<'src> {
     Starting {
         version: &'src [u8],
     },
+    Done,
+    Stopping,
     Death {
         victim: &'src [u8],
         attacker: &'src [u8],
@@ -59,6 +61,8 @@ pub enum Log<'src> {
     Leave(LeaveLog<'src>),
     Advancement(AdvancementLog<'src>),
     Starting(StartingLog<'src>),
+    Done,
+    Stopping,
     Death(DeathLog<'src>),
     Unknown(&'src [u8]),
 }
@@ -223,6 +227,21 @@ impl<'src> Log<'src> {
             .map(|version| PartialLog::Starting { version })
             .only_if_logger(LogLevel::Info, b"Server thread");
 
+        let done = group((
+            just::<&'src [u8], &'src [u8], LoggerParserExtra<'src>>(b"Done ("),
+            any().filter(u8::is_ascii_digit).repeated(),
+            just(b"."),
+            any().filter(u8::is_ascii_digit).repeated(),
+            just(b"s)! For help, type \"help\""),
+        ))
+        .map(|_| PartialLog::Done)
+        .only_if_logger(LogLevel::Info, b"Server thread");
+
+        let stopping = just::<&'src [u8], &'src [u8], LoggerParserExtra<'src>>(b"Stopping server")
+            .ignored()
+            .map(|_| PartialLog::Stopping)
+            .only_if_logger(LogLevel::Info, b"Server thread");
+
         let death = custom::<_, &[u8], _, LoggerParserExtra<'src>>(move |inp| {
             let cursor = inp.cursor();
             let Some(death_messages) = DEATH_MESSAGES.get() else {
@@ -338,6 +357,8 @@ impl<'src> Log<'src> {
             advancement,
             list,
             starting,
+            done,
+            stopping,
             death,
             generic,
         ));
@@ -382,6 +403,8 @@ impl<'src> Log<'src> {
                     PartialLog::Starting { version } => {
                         Self::Starting(StartingLog { time, version })
                     }
+                    PartialLog::Done => Self::Done,
+                    PartialLog::Stopping => Self::Stopping,
                     PartialLog::Death {
                         victim,
                         attacker,
