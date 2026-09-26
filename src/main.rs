@@ -284,8 +284,10 @@ async fn main() -> Result<()> {
             process.arg(arg);
         }
 
+        #[cfg(unix)]
+        process.process_group(0);
+
         process
-            .process_group(0)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?
