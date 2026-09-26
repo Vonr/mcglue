@@ -13,7 +13,6 @@ use std::{
     path::{Path, PathBuf},
     process::Stdio,
     sync::{Arc, OnceLock},
-    time::Duration,
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio_util::sync::CancellationToken;
