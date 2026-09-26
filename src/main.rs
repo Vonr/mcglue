@@ -111,43 +111,45 @@ async fn main() -> Result<()> {
         std::process::exit(1);
     }
 
-    let signal_cancel = CancellationToken::new();
-    let signal_cancel_clone = signal_cancel.clone();
+    let (signal_tx, signal_rx) = flume::unbounded();
     tokio::task::spawn(async move {
-        cfg_select! {
-            unix => {
-                use tokio::signal::unix::{SignalKind, signal};
+        loop {
+            cfg_select! {
+                unix => {
+                    use tokio::signal::unix::{SignalKind, signal};
 
-                let mut term = signal(SignalKind::terminate())?;
-                let mut quit = signal(SignalKind::quit())?;
-                let mut int = signal(SignalKind::interrupt())?;
+                    let mut term = signal(SignalKind::terminate())?;
+                    let mut quit = signal(SignalKind::quit())?;
+                    let mut int = signal(SignalKind::interrupt())?;
 
-                tokio::select! {
-                    _ = term.recv() => {}
-                    _ = quit.recv() => {}
-                    _ = int.recv() => {}
-                }
-            },
-            windows => {
-                use tokio::signal::windows::{ctrl_c, ctrl_close, ctrl_logoff, ctrl_shutdown};
+                    tokio::select! {
+                        _ = term.recv() => {}
+                        _ = quit.recv() => {}
+                        _ = int.recv() => {}
+                    }
+                },
+                windows => {
+                    use tokio::signal::windows::{ctrl_c, ctrl_close, ctrl_logoff, ctrl_shutdown};
 
-                let mut c = ctrl_c()?;
-                let mut close = ctrl_close()?;
-                let mut logoff = ctrl_logoff()?;
-                let mut shutdown = ctrl_shutdown()?;
+                    let mut c = ctrl_c()?;
+                    let mut close = ctrl_close()?;
+                    let mut logoff = ctrl_logoff()?;
+                    let mut shutdown = ctrl_shutdown()?;
 
-                tokio::select! {
-                    _ = c.recv() => {}
-                    _ = close.recv() => {}
-                    _ = logoff.recv() => {}
-                    _ = shutdown.recv() => {}
-                }
-            },
-        };
+                    tokio::select! {
+                        _ = c.recv() => {}
+                        _ = close.recv() => {}
+                        _ = logoff.recv() => {}
+                        _ = shutdown.recv() => {}
+                    }
+                },
+            };
 
-        eprintln!("Received exit signal");
-        signal_cancel_clone.cancel();
+            eprintln!("Received exit signal");
+            signal_tx.send_async(()).await?;
+        }
 
+        #[allow(unreachable_code)]
         Ok::<_, Error>(())
     });
 
@@ -284,6 +286,7 @@ async fn main() -> Result<()> {
         }
 
         process
+            .process_group(0)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()?
@@ -731,15 +734,24 @@ async fn main() -> Result<()> {
         }
     });
 
-    let _ = signal_cancel.run_until_cancelled(process.wait()).await;
-
-    if process.id().is_some() {
-        command(*b"stop").await?;
-        let _ = process.wait().await;
+    tokio::select! {
+        _ = process.wait() => {},
+        _ = signal_rx.recv_async() => {},
     }
 
-    let _ = process.wait().await;
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    if matches!(process.try_wait(), Ok(None)) {
+        eprintln!("Stopping server");
+        command(*b"stop").await?;
+
+        tokio::select! {
+            _ = process.wait() => {},
+            _ = signal_rx.recv_async() => {},
+        }
+    }
+
+    log_cancel.cancel();
+    log_reader.await??;
+
     let _ = webhook
         .execute(
             &http,
@@ -757,9 +769,6 @@ async fn main() -> Result<()> {
     eprintln!("Stopped server");
 
     eprintln!("Stopping wrapper");
-
-    log_cancel.cancel();
-    log_reader.await??;
 
     logger.await?;
 
