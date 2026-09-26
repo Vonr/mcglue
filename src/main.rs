@@ -750,8 +750,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    log_cancel.cancel();
-    log_reader.await??;
+    eprintln!("Stopped server");
 
     let _ = webhook
         .execute(
@@ -767,9 +766,11 @@ async fn main() -> Result<()> {
                 ),
         )
         .await;
-    eprintln!("Stopped server");
 
     eprintln!("Stopping wrapper");
+
+    log_cancel.cancel();
+    log_reader.await??;
 
     logger.await?;
 
