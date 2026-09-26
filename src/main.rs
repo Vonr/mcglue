@@ -428,7 +428,7 @@ async fn main() -> Result<()> {
                                             CreateEmbedAuthor::new(format!("{sender} left"))
                                                 .icon_url(&avatar),
                                         )
-                                        .colour(colours::roles::GOLD),
+                                        .colour(colours::branding::YELLOW),
                                 ),
                         )
                         .await;
@@ -681,7 +681,7 @@ async fn main() -> Result<()> {
                                 .embed(
                                     CreateEmbed::new()
                                         .author(CreateEmbedAuthor::new("Stopping server"))
-                                        .colour(colours::roles::GOLD),
+                                        .colour(colours::branding::YELLOW),
                                 ),
                         )
                         .await;
