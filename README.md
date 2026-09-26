@@ -15,6 +15,8 @@ They may be retrieved manually or with [cargo-binstall](https://github.com/cargo
 
 You can choose to install from source with `cargo install --git https://github.com/Vonr/mcglue`
 
+There is also an `eggs/` directory in the repository containing Pterodactyl-compatible eggs that automatically install mcglue via cargo-binstall.
+
 ### Usage
 
 ```sh
