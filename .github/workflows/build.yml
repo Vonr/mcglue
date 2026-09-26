@@ -23,7 +23,6 @@ jobs:
         run: |
           echo "version is: $VERSION"
       - name: Check that tag version and Cargo.toml version are the same
-        if: env.VERSION != ''
         shell: bash
         run: |
           if ! grep -q "version = \"$VERSION\"" Cargo.toml; then
