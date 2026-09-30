@@ -1,0 +1,18 @@
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "0BSD",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CDLA-Permissive-2.0",
+    "GPL-3.0-only",
+    "MPL-2.0",
+    "Unlicense",
+    "Zlib"
+]
+confidence-threshold = 0.8

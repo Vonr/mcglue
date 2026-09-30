@@ -2,7 +2,7 @@
 name = "mcglue"
 version = "0.1.19"
 edition = "2024"
-license = "MPL-2.0"
+license = "MPL-2.0 OR GPL-3.0-only"
 homepage = "https://github.com/Vonr/mcglue"
 repository = "https://github.com/Vonr/mcglue"
 

@@ -2806,7 +2806,7 @@ dependencies = [
 [[package]]
 name = "nbtq-core"
 version = "0.1.1"
-source = "git+https://github.com/Vonr/nbtq#319b42a1ef0fd2015b22958a4986648313a5fc60"
+source = "git+https://github.com/Vonr/nbtq#5408421387fb4008ca5add6f9f575af97e83eea6"
 dependencies = [
  "anyhow",
  "bytes",
