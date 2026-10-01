@@ -271,10 +271,11 @@ pub async fn autocomplete_path_nbt<'ctx>(
     partial: &'ctx str,
 ) -> CreateAutocompleteResponse<'ctx> {
     autocomplete_path(ctx, partial, |e| {
-        e.extension().is_some_and(|e| {
-            e.to_str()
-                .is_some_and(|e| matches!(e, "nbt" | "dat" | "snbt"))
-        })
+        e.is_dir()
+            || e.extension().is_some_and(|e| {
+                e.to_str()
+                    .is_some_and(|e| matches!(e, "nbt" | "dat" | "snbt"))
+            })
     })
     .await
 }

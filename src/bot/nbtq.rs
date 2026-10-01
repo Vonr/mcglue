@@ -68,17 +68,16 @@ pub async fn nbtq(
                 decoder.write_all(&raw_input)?;
                 raw_input = decoder.finish().context("gzip decode failure")?;
                 input_format = OutputFormat::Gzip;
-                Nbt::read(&mut raw_input.as_slice()).context("failed post-ungzip parse")
+                Nbt::read(&mut raw_input.as_slice()).context("failed post-gunzip parse")
             })
             .or_else(|_| {
                 input_format = OutputFormat::Snbt;
                 std::str::from_utf8(&raw_input)
-                    .context("failed utf8 check after non-stringified failures")?
+                    .context("failed utf8 check after failing binary NBT detection")?
                     .trim_ascii_end()
                     .parse()
-                    .context("failed snbt parse")
-            })
-            .context("input should be NBT or SNBT")?;
+                    .context("failed SNBT parse")
+            })?;
         let (name, input) = (input.name, input.root_tag);
 
         let program = jaq_core::load::File {
