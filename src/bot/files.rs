@@ -2,10 +2,7 @@ use std::time::Duration;
 
 use eyre::ensure;
 use humansize::SizeFormatter;
-use poise::{
-    CreateReply,
-    serenity_prelude::{CreateActionRow, CreateButton, CreateInteractionResponse},
-};
+use poise::{CreateReply, serenity_prelude::*};
 use walkdir::WalkDir;
 
 use super::Context;
@@ -22,12 +19,12 @@ pub async fn delete(
     let path = ctx.data().server_directory.safe_join(path)?;
     ensure!(path.exists(), "Requested file at {path:?} does not exist");
 
-    let components = vec![CreateActionRow::Buttons(vec![
+    let components = [CreateComponent::ActionRow(CreateActionRow::buttons(vec![
         CreateButton::new("confirm")
             .label("Confirm")
-            .style(poise::serenity_prelude::ButtonStyle::Danger),
+            .style(ButtonStyle::Danger),
         CreateButton::new("cancel").label("Cancel"),
-    ])];
+    ]))];
 
     let metadata = path.metadata()?;
 
@@ -50,7 +47,7 @@ pub async fn delete(
                     .content(format!(
                         "Delete {count} files in {path:?} ({size_formatter})?"
                     ))
-                    .components(components),
+                    .components(&components),
             )
             .await?;
     } else {
@@ -60,7 +57,7 @@ pub async fn delete(
                 CreateReply::default()
                     .ephemeral(true)
                     .content(format!("Delete {path:?} ({size_formatter})?"))
-                    .components(components),
+                    .components(&components),
             )
             .await?;
     }
@@ -69,7 +66,8 @@ pub async fn delete(
         Some(interaction) = response
         .message()
         .await?
-        .await_component_interaction(ctx.serenity_context()) => {
+        .id
+        .collect_component_interactions(ctx.serenity_context()) => {
             match interaction.data.custom_id.as_str() {
                 "confirm" => {
                     if metadata.is_dir() {

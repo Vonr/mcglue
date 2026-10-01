@@ -10,9 +10,11 @@ use jaq_core::{
     unwrap_valr,
 };
 use nbtq_core::{Val, print::WriterOptions};
-use poise::{CreateReply, serenity_prelude::CreateAttachment};
-use std::io::Write;
-use std::{fs::OpenOptions, io::Read};
+use poise::{CreateReply, serenity_prelude::*};
+use std::{
+    fs::OpenOptions,
+    io::{Read, Write},
+};
 
 use super::Context;
 use crate::{Error, SafeJoin};
@@ -187,10 +189,7 @@ pub async fn nbtq(
             CreateReply::default()
                 .ephemeral(true)
                 .content("Executed filter.")
-                .attachment(CreateAttachment::bytes(
-                    output_string.as_bytes(),
-                    "result.txt",
-                ))
+                .attachment(CreateAttachment::bytes(output_string, "result.txt"))
                 .attachment(CreateAttachment::bytes(original_bytes, file_name)),
         )
         .await?;

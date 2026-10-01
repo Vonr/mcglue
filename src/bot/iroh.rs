@@ -18,10 +18,7 @@ use iroh_blobs::{
     ticket::BlobTicket,
 };
 use n0_future::{BufferedStreamExt, StreamExt};
-use poise::{
-    CreateReply,
-    serenity_prelude::{CreateActionRow, CreateButton, CreateInteractionResponse},
-};
+use poise::{CreateReply, serenity_prelude::*};
 use walkdir::WalkDir;
 
 use super::Context;
@@ -143,9 +140,9 @@ pub async fn download(
             CreateReply::default()
                 .ephemeral(true)
                 .content(&message)
-                .components(vec![CreateActionRow::Buttons(vec![
-                    CreateButton::new("stop").label("Stop Sharing"),
-                ])]),
+                .components(&[CreateComponent::ActionRow(CreateActionRow::Buttons(
+                    vec![CreateButton::new("stop").label("Stop Sharing")].into(),
+                ))]),
         )
         .await?;
     ctx.defer_ephemeral().await?;
@@ -154,7 +151,8 @@ pub async fn download(
         Some(interaction) = response
         .message()
         .await?
-        .await_component_interaction(ctx.serenity_context()) => {
+        .id
+        .collect_component_interactions(ctx.serenity_context()) => {
             if interaction.data.custom_id == "stop" {
                 response
                     .edit(

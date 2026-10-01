@@ -1,16 +1,21 @@
 use crab_nbt::NbtTag;
 use eyre::{Context as _, ContextCompat, bail, ensure};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
-use poise::serenity_prelude::CreateAutocompleteResponse;
-use poise::{CreateReply, serenity_prelude::CreateAttachment};
+use poise::{CreateReply, serenity_prelude::*};
 use serde::{Deserialize, Serialize};
-use std::io::Write;
-use std::{collections::HashMap, fs::OpenOptions, io::Read};
+use std::{
+    collections::HashMap,
+    fs::OpenOptions,
+    io::{Read, Write},
+};
 
 use super::Context;
 use crate::{Error, GAME_VERSION};
 
-async fn autocomplete_dimension(_ctx: Context<'_>, partial: &str) -> CreateAutocompleteResponse {
+async fn autocomplete_dimension<'ctx>(
+    _ctx: Context<'ctx>,
+    partial: &'ctx str,
+) -> CreateAutocompleteResponse<'ctx> {
     const KNOWN_DIMENSIONS: [&str; 3] = [
         "minecraft:overworld",
         "minecraft:the_nether",
@@ -19,7 +24,7 @@ async fn autocomplete_dimension(_ctx: Context<'_>, partial: &str) -> CreateAutoc
 
     let mut response = CreateAutocompleteResponse::new();
     for dim in KNOWN_DIMENSIONS.iter().filter(|dim| dim.contains(partial)) {
-        response = response.add_string_choice(*dim, *dim);
+        response = response.add_choice(*dim);
     }
 
     response
@@ -157,7 +162,7 @@ pub async fn tpo(
                 z,
                 data.dimension
             ))
-            .attachment(CreateAttachment::bytes(original_bytes, &filename)),
+            .attachment(CreateAttachment::bytes(original_bytes, filename)),
     )
     .await?;
 

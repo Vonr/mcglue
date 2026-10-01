@@ -1,5 +1,5 @@
 use eyre::eyre;
-use poise::{CreateReply, serenity_prelude::CreateAttachment};
+use poise::{CreateReply, serenity_prelude::*};
 use std::fs;
 use std::{fs::OpenOptions, io::Read};
 

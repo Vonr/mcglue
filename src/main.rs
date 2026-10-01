@@ -12,6 +12,7 @@ use std::{
     io::{BufRead, Read},
     path::{Path, PathBuf},
     process::Stdio,
+    str::FromStr,
     sync::{Arc, OnceLock},
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -21,7 +22,7 @@ use zip::ZipArchive;
 use bstr::ByteSlice;
 use chumsky::prelude::*;
 use poise::serenity_prelude::{
-    CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Webhook, colours,
+    CreateEmbed, CreateEmbedAuthor, ExecuteWebhook, Http, Token, Webhook, colours,
 };
 
 type Error = eyre::Error;
@@ -152,16 +153,18 @@ async fn main() -> Result<()> {
         Ok::<_, Error>(())
     });
 
-    let token = env::discord_bot_token();
+    let token = Token::from_str(&env::discord_bot_token())?;
+    let logger_token = token.clone();
+    let log_reader_token = token.clone();
 
-    let http = Http::new(&token);
+    let http = Http::new(token);
     let webhook = Webhook::from_url(&http, &crate::env::discord_webhook_url()).await?;
 
     let mut join_set = tokio::task::JoinSet::<Result<()>>::new();
 
     let (logger, log_to_console) = {
         let (tx, rx) = flume::unbounded::<Box<str>>();
-        let http = Http::new(&token);
+        let http = Http::new(logger_token);
         let console_webhook =
             Webhook::from_url(&http, &crate::env::discord_console_webhook_url()).await?;
 
@@ -315,7 +318,7 @@ async fn main() -> Result<()> {
     let log_cancel = CancellationToken::new();
     let log_cancel_clone = log_cancel.clone();
     let log_reader = tokio::task::spawn(async move {
-        let http = Http::new(&token);
+        let http = Http::new(log_reader_token);
         let webhook = Webhook::from_url(&http, &crate::env::discord_webhook_url()).await?;
 
         let mut input = BufReader::new(stdout);

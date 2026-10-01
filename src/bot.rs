@@ -10,13 +10,12 @@ use std::{
     borrow::Cow,
     fmt::Display,
     path::{Path, PathBuf},
+    str::FromStr,
+    sync::Arc,
 };
 
 use parking_lot::Mutex;
-use poise::{
-    CreateReply, FrameworkError,
-    serenity_prelude::{self as serenity, CreateAutocompleteResponse, GatewayIntents, RoleId},
-};
+use poise::{CreateReply, FrameworkError, serenity_prelude::*};
 use serde::Deserialize;
 use uuid::Uuid;
 use walkdir::WalkDir;
@@ -32,120 +31,118 @@ pub struct Data {
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 
 pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> Result<()> {
-    let token = crate::env::discord_bot_token();
+    let token = Token::from_str(&crate::env::discord_bot_token())?;
     let intents = GatewayIntents::non_privileged()
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::GUILD_MESSAGES;
 
-    let framework = poise::Framework::builder()
-        .options(poise::FrameworkOptions {
-            commands: vec![
-                crash::crash(),
-                tpo::tpo(),
-                #[cfg(feature = "iroh")]
-                iroh::download(),
-                #[cfg(feature = "iroh")]
-                iroh::upload(),
-                files::delete(),
-                list::list(),
-                nbtq::nbtq(),
-            ],
-            event_handler: |framework, event| Box::pin(event_handler(framework, event)),
-            on_error: |error| {
-                Box::pin(async move {
-                    match error {
-                        FrameworkError::Command { ctx, error, .. } => {
-                            let error = error.to_string();
-                            if let Err(e) = ctx
-                                .send(CreateReply::default().ephemeral(true).content(error))
-                                .await
-                            {
-                                eprintln!("Error while handling bot error: {}", e);
-                            }
-                        }
-                        error => {
-                            if let Err(e) = poise::builtins::on_error(error).await {
-                                eprintln!("Error while handling bot error: {}", e);
-                            }
+    let options = poise::FrameworkOptions {
+        commands: vec![
+            crash::crash(),
+            tpo::tpo(),
+            #[cfg(feature = "iroh")]
+            iroh::download(),
+            #[cfg(feature = "iroh")]
+            iroh::upload(),
+            files::delete(),
+            list::list(),
+            nbtq::nbtq(),
+        ],
+        on_error: |error| {
+            Box::pin(async move {
+                match error {
+                    FrameworkError::Command { ctx, error, .. } => {
+                        let error = error.to_string();
+                        if let Err(e) = ctx
+                            .send(CreateReply::default().ephemeral(true).content(error))
+                            .await
+                        {
+                            eprintln!("Error while handling bot error: {}", e);
                         }
                     }
-                })
-            },
-            ..Default::default()
-        })
-        .setup(|ctx, _ready, framework| {
-            Box::pin(async move {
-                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data {
-                    bot_start_notifier: Mutex::new(Some(bot_start_notifier)),
-                    server_directory: crate::server_directory().into(),
-                    operator_role_id: crate::env::discord_operator_role_id().into(),
-                })
+                    error => {
+                        if let Err(e) = poise::builtins::on_error(error).await {
+                            eprintln!("Error while handling bot error: {}", e);
+                        }
+                    }
+                }
             })
-        })
-        .build();
+        },
+        ..Default::default()
+    };
 
-    let client = serenity::ClientBuilder::new(token, intents)
-        .framework(framework)
-        .await;
+    let mut client = ClientBuilder::new(token, intents)
+        .framework(Box::new(poise::Framework::new(options)))
+        .event_handler(Arc::new(McglueEventHandler))
+        .data(
+            Data {
+                bot_start_notifier: Mutex::new(Some(bot_start_notifier)),
+                server_directory: crate::server_directory().into(),
+                operator_role_id: crate::env::discord_operator_role_id().into(),
+            }
+            .into(),
+        )
+        .await?;
 
-    client?.start().await?;
+    client.start().await?;
 
     Ok(())
 }
 
-async fn event_handler(
-    framework: poise::FrameworkContext<'_, Data, Error>,
-    event: &serenity::FullEvent,
-) -> Result<(), Error> {
-    match event {
-        serenity::FullEvent::Ready { data_about_bot, .. } => {
-            eprintln!("Logged in as {}", data_about_bot.user.name);
-            framework
-                .user_data
-                .bot_start_notifier
-                .lock()
-                .take()
-                .unwrap()
-                .send(())
-                .unwrap();
-        }
-        serenity::FullEvent::Message { new_message }
-            if !new_message.author.bot && new_message.thread.is_none() =>
-        {
-            if new_message.channel_id.get() == crate::env::discord_channel_id() {
-                const PREFIX: &str = "[Discord] ";
-                let author = new_message
-                    .author_nick(&framework.serenity_context.http)
-                    .await
-                    .map(Cow::Owned)
-                    .unwrap_or_else(|| new_message.author.display_name().into());
+struct McglueEventHandler;
 
-                let mut content = String::with_capacity(
-                    new_message.content.len() + PREFIX.len() + author.len() + 3,
-                );
-
-                content.push_str(PREFIX);
-                content.push('<');
-                content.push_str(&author);
-                content.push_str("> ");
-                content.push_str(&new_message.content);
-
-                crate::command(format!(r#"tellraw @a {{"text":{:?}}}"#, content).as_bytes())
-                    .await?;
-            } else if new_message.channel_id.get() == crate::env::discord_console_channel_id()
-                && new_message
-                    .member(&framework.serenity_context.http)
-                    .await
-                    .is_ok_and(|m| m.roles.contains(&framework.user_data.operator_role_id))
-            {
-                crate::command(new_message.content.as_bytes()).await?;
+#[async_trait]
+impl EventHandler for McglueEventHandler {
+    async fn dispatch(&self, context: &poise::serenity_prelude::Context, event: &FullEvent) {
+        match event {
+            FullEvent::Ready { data_about_bot, .. } => {
+                eprintln!("Logged in as {}", data_about_bot.user.name);
+                context
+                    .data_ref::<Data>()
+                    .bot_start_notifier
+                    .lock()
+                    .take()
+                    .unwrap()
+                    .send(())
+                    .unwrap();
             }
-        }
-        _ => {}
-    }
+            FullEvent::Message { new_message, .. }
+                if !new_message.author.bot() && new_message.thread.is_none() =>
+            {
+                if new_message.channel_id.get() == crate::env::discord_channel_id() {
+                    const PREFIX: &str = "[Discord] ";
+                    let author = new_message
+                        .author_nick(&context.http)
+                        .await
+                        .map(Cow::Owned)
+                        .unwrap_or_else(|| new_message.author.display_name().into());
 
-    Ok(())
+                    let mut content = String::with_capacity(
+                        new_message.content.len() as usize + PREFIX.len() + author.len() + 3,
+                    );
+
+                    content.push_str(PREFIX);
+                    content.push('<');
+                    content.push_str(&author);
+                    content.push_str("> ");
+                    content.push_str(&new_message.content);
+
+                    let _ = crate::command(
+                        format!(r#"tellraw @a {{"text":{:?}}}"#, content).as_bytes(),
+                    )
+                    .await;
+                } else if new_message.channel_id.get() == crate::env::discord_console_channel_id()
+                    && new_message.member(&context.http).await.is_ok_and(|m| {
+                        m.roles
+                            .contains(&context.data_ref::<Data>().operator_role_id)
+                    })
+                {
+                    let _ = crate::command(new_message.content.as_bytes()).await;
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 pub async fn maybe_username_to_uuid<S>(s: &S) -> Result<Uuid>
@@ -195,11 +192,11 @@ pub async fn is_operator(ctx: Context<'_>) -> Result<bool> {
     }
 }
 
-async fn autocomplete_path(
-    ctx: Context<'_>,
-    partial: &str,
+async fn autocomplete_path<'ctx>(
+    ctx: Context<'ctx>,
+    partial: &'ctx str,
     condition: impl FnMut(&PathBuf) -> bool,
-) -> CreateAutocompleteResponse {
+) -> CreateAutocompleteResponse<'ctx> {
     let mut response = CreateAutocompleteResponse::new();
     if !matches!(is_operator(ctx).await, Ok(true)) {
         return response;
@@ -225,7 +222,7 @@ async fn autocomplete_path(
 
     if matches!(std::fs::exists(&path), Ok(true)) {
         if !path.is_dir() {
-            return response.add_string_choice(partial, partial);
+            return response.add_choice(partial);
         }
     } else {
         if let Some(parent) = path.parent() {
@@ -256,17 +253,23 @@ async fn autocomplete_path(
         .filter(|e| !e.starts_with('/') && e.contains(partial))
         .take(25)
     {
-        response = response.add_string_choice(e.clone(), e);
+        response = response.add_choice(e);
     }
 
     response
 }
 
-pub async fn autocomplete_path_any(ctx: Context<'_>, partial: &str) -> CreateAutocompleteResponse {
+pub async fn autocomplete_path_any<'ctx>(
+    ctx: Context<'ctx>,
+    partial: &'ctx str,
+) -> CreateAutocompleteResponse<'ctx> {
     autocomplete_path(ctx, partial, |_| true).await
 }
 
-pub async fn autocomplete_path_nbt(ctx: Context<'_>, partial: &str) -> CreateAutocompleteResponse {
+pub async fn autocomplete_path_nbt<'ctx>(
+    ctx: Context<'ctx>,
+    partial: &'ctx str,
+) -> CreateAutocompleteResponse<'ctx> {
     autocomplete_path(ctx, partial, |e| {
         e.extension().is_some_and(|e| {
             e.to_str()
@@ -276,9 +279,9 @@ pub async fn autocomplete_path_nbt(ctx: Context<'_>, partial: &str) -> CreateAut
     .await
 }
 
-pub async fn autocomplete_path_directory(
-    ctx: Context<'_>,
-    partial: &str,
-) -> CreateAutocompleteResponse {
+pub async fn autocomplete_path_directory<'ctx>(
+    ctx: Context<'ctx>,
+    partial: &'ctx str,
+) -> CreateAutocompleteResponse<'ctx> {
     autocomplete_path(ctx, partial, |e| e.is_dir()).await
 }
