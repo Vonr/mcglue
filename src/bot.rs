@@ -1,7 +1,5 @@
 mod crash;
 mod files;
-#[cfg(feature = "iroh")]
-mod iroh;
 mod list;
 mod nbtq;
 mod tpo;
@@ -15,6 +13,7 @@ use std::{
 };
 
 use parking_lot::Mutex;
+use path_absolutize::Absolutize;
 use poise::{CreateReply, FrameworkError, serenity_prelude::*};
 use serde::Deserialize;
 use uuid::Uuid;
@@ -30,6 +29,18 @@ pub struct Data {
 
 pub type Context<'a> = poise::Context<'a, Data, Error>;
 
+pub fn commands() -> Vec<poise::Command<Data, crate::Error>> {
+    vec![
+        crash::crash(),
+        tpo::tpo(),
+        files::upload(),
+        files::download(),
+        files::delete(),
+        list::list(),
+        nbtq::nbtq(),
+    ]
+}
+
 pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> Result<()> {
     let token = Token::from_str(&crate::env::discord_bot_token())?;
     let intents = GatewayIntents::non_privileged()
@@ -37,17 +48,7 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
         | GatewayIntents::GUILD_MESSAGES;
 
     let options = poise::FrameworkOptions {
-        commands: vec![
-            crash::crash(),
-            tpo::tpo(),
-            #[cfg(feature = "iroh")]
-            iroh::download(),
-            #[cfg(feature = "iroh")]
-            iroh::upload(),
-            files::delete(),
-            list::list(),
-            nbtq::nbtq(),
-        ],
+        commands: commands(),
         on_error: |error| {
             Box::pin(async move {
                 match error {
@@ -77,7 +78,7 @@ pub async fn start_bot(bot_start_notifier: tokio::sync::oneshot::Sender<()>) -> 
         .data(
             Data {
                 bot_start_notifier: Mutex::new(Some(bot_start_notifier)),
-                server_directory: crate::server_directory().into(),
+                server_directory: crate::server_directory().canonicalize()?.into(),
                 operator_role_id: crate::env::discord_operator_role_id().into(),
             }
             .into(),
@@ -97,6 +98,11 @@ impl EventHandler for McglueEventHandler {
         match event {
             FullEvent::Ready { data_about_bot, .. } => {
                 eprintln!("Logged in as {}", data_about_bot.user.name);
+
+                poise::builtins::register_globally(context.http(), &commands())
+                    .await
+                    .unwrap();
+
                 context
                     .data_ref::<Data>()
                     .bot_start_notifier
@@ -202,7 +208,7 @@ async fn autocomplete_path<'ctx>(
         return response;
     }
 
-    let mut path = PathBuf::from(partial);
+    let path = PathBuf::from(partial);
     if path
         .components()
         .any(|c| !matches!(c, std::path::Component::Normal(_)))
@@ -210,27 +216,31 @@ async fn autocomplete_path<'ctx>(
         return response;
     }
 
-    let Some(mut root) = crate::server_directory()
-        .canonicalize()
-        .ok()
-        .and_then(|d| d.to_str().map(|s| s.to_string()))
-    else {
+    let Ok(mut path) = path.absolutize().map(|p| p.into_owned()) else {
+        return response;
+    };
+
+    let Some(mut root) = ctx.data().server_directory.to_str().map(|s| s.to_string()) else {
         return response;
     };
 
     root.push('/');
 
-    if matches!(std::fs::exists(&path), Ok(true)) {
-        if !path.is_dir() {
-            return response.add_choice(partial);
+    match std::fs::exists(&path) {
+        Ok(true) => {
+            if !path.is_dir() {
+                return response.add_choice(partial);
+            }
         }
-    } else {
-        if let Some(parent) = path.parent() {
-            path = parent.to_path_buf();
-        } else {
-            path = PathBuf::from(&root);
-        };
+        _ => {
+            path = match path.parent() {
+                Some(parent) => parent.to_path_buf(),
+                None => PathBuf::from(&root),
+            };
+        }
     }
+
+    eprintln!("searching for {partial:?} in {path:?}");
 
     for e in WalkDir::new(path)
         .max_depth(1)

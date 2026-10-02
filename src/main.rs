@@ -5,6 +5,7 @@ mod parsing;
 
 use crate::parsing::*;
 use eyre::{ContextCompat, ensure, eyre};
+use path_absolutize::Absolutize;
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -800,12 +801,39 @@ pub trait SafeJoin {
 
 impl SafeJoin for Path {
     fn safe_join<P: AsRef<Path>>(&self, path: P) -> Result<PathBuf> {
-        let new = self.join(path).canonicalize()?;
+        let joined = self.join(path);
+        let joined = joined
+            .canonicalize()
+            .map(Cow::Owned)
+            .or_else(|_| joined.absolutize())?;
+        let root = self
+            .canonicalize()
+            .map(Cow::Owned)
+            .or_else(|_| self.absolutize())?;
         ensure!(
-            new.starts_with(self.canonicalize()?),
-            "Attempted traversal above root {self:?}"
+            joined.starts_with(&root),
+            "Attempted traversal above root {self:?} to {joined:?}"
         );
 
-        Ok(new)
+        let mut test_path = PathBuf::new();
+        for component in joined.components() {
+            test_path = test_path.join(component);
+            if !test_path
+                .canonicalize()
+                .map(|c| c.starts_with(&root))
+                .unwrap_or(false)
+            {
+                break;
+            }
+        }
+
+        if let Some(parent) = test_path.parent() {
+            ensure!(
+                parent.canonicalize()?.starts_with(&root),
+                "Attempted traversal above root {self:?} to {parent:?}"
+            );
+        }
+
+        Ok(joined.into())
     }
 }
