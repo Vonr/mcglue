@@ -8,7 +8,17 @@ Messages from Discord are relayed to clients using the `/tellraw` command, while
 
 Console logs are sent to the console channel, and messages sent there are executed on the server as commands.
 
-## Installation
+### Commands
+
+- **tpo** - Teleport offline players by editing their player data
+- **crash** - Get the latest crash report, if one exists
+- **list** - Get a list of online players
+- **nbtq** - Inpsect or edit NBT files using jq-like syntax
+- **download** - Download a file from the server, using iroh for P2P transfers above the attachment size limit
+- **upload** - Upload a file to the server, with the option of using iroh for P2P transfers
+- **delete** - Delete a file from the server
+
+### Installation
 
 mcglue provides automatically built binaries for certain targets in the [releases](https://github.com/Vonr/mcglue/releases).   
 They may be retrieved manually or with [cargo-binstall](https://github.com/cargo-bins/cargo-binstall) with `cargo binstall --git https://github.com/Vonr/mcglue mcglue`.
@@ -16,6 +26,15 @@ They may be retrieved manually or with [cargo-binstall](https://github.com/cargo
 You can choose to install from source with `cargo install --git https://github.com/Vonr/mcglue`
 
 There is also an `eggs/` directory in the repository containing Pterodactyl-compatible eggs that automatically install mcglue via cargo-binstall.
+
+Your Discord bot should have the `bot` scope and the following permissions:
+- Send Messages
+- Embed Links
+- Attach Files
+- Use Slash Commands
+- Bypass Slowmode (optional)
+
+These permissions correspond to the permission integer of `4503601774905344`, meaning your invite link should look like `https://discord.com/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=4503601774905344&integration_type=0&scope=bot`
 
 ### Usage
 
