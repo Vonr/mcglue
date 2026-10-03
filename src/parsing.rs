@@ -368,6 +368,16 @@ impl<'src> Log<'src> {
                 .delimited_by(just(b'['), just(b']'))
                 .then_ignore(just(b' ')),
             Logger::parser()
+                .then_ignore(
+                    just(b' ')
+                        .then(
+                            any()
+                                .filter(|b: &u8| *b != b']')
+                                .repeated()
+                                .delimited_by(just(b'['), just(b']')),
+                        )
+                        .or_not(),
+                )
                 .then_ignore(just(b": ".as_slice()))
                 .then_with_ctx(partial_logs.map_with(|parsed, e| (parsed, e.span()))),
         ))

@@ -10,6 +10,7 @@ services:
     env_file: .env
     environment:
       VERSION: "26.2"
+      # TYPE: NEOFORGE
       EULA: "TRUE"
       JVM_OPTS: "-XX:+UseCompactObjectHeaders -XX:+UseZGC"
       SERVER_RUNNER: "/mcglue mc-server-runner"
