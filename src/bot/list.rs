@@ -4,7 +4,7 @@ use super::Context;
 use crate::{Result, interface};
 
 /// Get a list of players
-#[poise::command(slash_command, guild_only, check = "super::is_operator")]
+#[poise::command(slash_command, guild_only)]
 pub async fn list(ctx: Context<'_>) -> Result<()> {
     let list = {
         let mut recv = interface::LIST_SENDER.get().unwrap().subscribe();
