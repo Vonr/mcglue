@@ -100,6 +100,7 @@ impl<'src> Log<'src> {
                 .try_map(|s: &[u8], span| {
                     btoi::btou_radix(s, 16).map_err(|e| Rich::custom(span, e.to_string()))
                 })
+                .boxed()
         };
 
         let non_whitespace_slice = any::<'src, &'src [u8], LoggerParserExtra<'src>>()
@@ -134,7 +135,8 @@ impl<'src> Log<'src> {
             sender,
             message,
         })
-        .only_if_logger(LogLevel::Info, b"Server thread");
+        .only_if_logger(LogLevel::Info, b"Server thread")
+        .boxed();
 
         let list = group((
             just(b"There are ").ignored(),
@@ -176,26 +178,29 @@ impl<'src> Log<'src> {
                 .delimited_by(just(b'('), just(b')')),
             ))
             .map(|(name, _, uuid)| PlayerData { name, uuid })
-            .separated_by(just(b' '))
+            .separated_by(just(b", "))
             .collect::<Vec<_>>(),
         ))
         .map(|(_, _, _, max, _, players)| PartialLog::List {
             data: ListUuidsLog { players, max },
         })
         .map_err(|e| Rich::custom(*e.span(), "Could not parse as `/list uuids` output"))
-        .only_if_logger(LogLevel::Info, b"Server thread");
+        .only_if_logger(LogLevel::Info, b"Server thread")
+        .boxed();
 
         let join = non_whitespace_slice
             .then_ignore(just(b" joined the game"))
             .map(|player| PartialLog::Join { player })
             .map_err(|e| Rich::custom(*e.span(), "Could not parse as join message"))
-            .only_if_logger(LogLevel::Info, b"Server thread");
+            .only_if_logger(LogLevel::Info, b"Server thread")
+            .boxed();
 
         let leave = non_whitespace_slice
             .then_ignore(just(b" left the game"))
             .map(|player| PartialLog::Leave { player })
             .map_err(|e| Rich::custom(*e.span(), "Could not parse as leave message"))
-            .only_if_logger(LogLevel::Info, b"Server thread");
+            .only_if_logger(LogLevel::Info, b"Server thread")
+            .boxed();
 
         let advancement = non_whitespace_slice
             .then_ignore(choice((
@@ -216,7 +221,8 @@ impl<'src> Log<'src> {
                 advancement,
             })
             .map_err(|e| Rich::custom(*e.span(), "Could not parse as advancement message"))
-            .only_if_logger(LogLevel::Info, b"Server thread");
+            .only_if_logger(LogLevel::Info, b"Server thread")
+            .boxed();
 
         let starting = just::<_, _, LoggerParserExtra<'src>>(b"Starting minecraft server version ")
             .ignore_then(
@@ -225,7 +231,8 @@ impl<'src> Log<'src> {
                     .to_slice(),
             )
             .map(|version| PartialLog::Starting { version })
-            .only_if_logger(LogLevel::Info, b"Server thread");
+            .only_if_logger(LogLevel::Info, b"Server thread")
+            .boxed();
 
         let done = group((
             just::<&'src [u8], &'src [u8], LoggerParserExtra<'src>>(b"Done ("),
@@ -235,12 +242,14 @@ impl<'src> Log<'src> {
             just(b"s)! For help, type \"help\""),
         ))
         .map(|_| PartialLog::Done)
-        .only_if_logger(LogLevel::Info, b"Server thread");
+        .only_if_logger(LogLevel::Info, b"Server thread")
+        .boxed();
 
         let stopping = just::<&'src [u8], &'src [u8], LoggerParserExtra<'src>>(b"Stopping server")
             .ignored()
             .map(|_| PartialLog::Stopping)
-            .only_if_logger(LogLevel::Info, b"Server thread");
+            .only_if_logger(LogLevel::Info, b"Server thread")
+            .boxed();
 
         let death = custom::<_, &[u8], _, LoggerParserExtra<'src>>(move |inp| {
             let cursor = inp.cursor();
@@ -342,13 +351,15 @@ impl<'src> Log<'src> {
             weapon,
         })
         .map_err(|e| Rich::custom(*e.span(), "Could not parse as a death message"))
-        .only_if_logger(LogLevel::Info, b"Server thread");
+        .only_if_logger(LogLevel::Info, b"Server thread")
+        .boxed();
 
         let generic = any()
             .repeated()
             .at_least(1)
             .to_slice()
-            .map(|message| PartialLog::Generic { message });
+            .map(|message| PartialLog::Generic { message })
+            .boxed();
 
         let partial_logs = choice((
             chat,
@@ -361,7 +372,8 @@ impl<'src> Log<'src> {
             stopping,
             death,
             generic,
-        ));
+        ))
+        .boxed();
 
         group((
             HmsTime::parser()

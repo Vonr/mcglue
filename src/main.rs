@@ -507,22 +507,22 @@ async fn main() -> Result<()> {
                         let mut lang_ranges = Vec::new();
                         let mut full_lang: HashMap<&'static str, &'static str> = HashMap::new();
 
-                        serde_json::from_slice::<HashMap<String, String>>(
-                            &reqwest::get(
-                                format!("https://assets.mcasset.cloud/{version}/assets/minecraft/lang/{lang_file_name}")
-                            )
+                        reqwest::get(
+                            format!("https://assets.mcasset.cloud/{version}/assets/minecraft/lang/{lang_file_name}")
+                        )
                             .await?
-                            .bytes()
+                            .json::<HashMap<String, String>>()
                             .await?
-                        ).unwrap_or_default().into_iter().for_each(|(k, v)| {
-                            let k_start = lang_string.len();
-                            lang_string.push_str(&k);
-                            let k_end = lang_string.len();
-                            let v_start = lang_string.len();
-                            lang_string.push_str(&v);
-                            let v_end = lang_string.len();
-                            lang_ranges.push((k_start..k_end, v_start..v_end));
-                        });
+                            .into_iter()
+                            .for_each(|(k, v)| {
+                                let k_start = lang_string.len();
+                                lang_string.push_str(&k);
+                                let k_end = lang_string.len();
+                                let v_start = lang_string.len();
+                                lang_string.push_str(&v);
+                                let v_end = lang_string.len();
+                                lang_ranges.push((k_start..k_end, v_start..v_end));
+                            });
 
                         let mods_folder = server_directory().join("mods");
                         if let Ok(mod_paths) = jar::files(&mods_folder) {
@@ -531,7 +531,7 @@ async fn main() -> Result<()> {
                                 let mut archive = ZipArchive::new(file)?;
 
                                 for i in 0..archive.len() {
-                                    let mut file = archive.by_index(i)?;
+                                    let file = archive.by_index_raw(i)?;
 
                                     if !file.is_file() {
                                         continue;
@@ -540,6 +540,8 @@ async fn main() -> Result<()> {
                                     if let Some(name) = file.enclosed_name()
                                         && name.file_name().is_some_and(|n| *n == *lang_file_name)
                                     {
+                                        drop(file);
+                                        let mut file = archive.by_index(i)?;
                                         buf.clear();
                                         file.read_to_end(&mut buf)?;
 
@@ -786,12 +788,19 @@ async fn main() -> Result<()> {
 }
 
 pub async fn command(s: impl Into<Box<[u8]>>) -> Result<()> {
-    COMMAND_CHANNEL.get().unwrap().send_async(s.into()).await?;
+    COMMAND_CHANNEL
+        .get()
+        .context("Server stdin closed")?
+        .send_async(s.into())
+        .await?;
     Ok(())
 }
 
 pub fn command_sync(s: impl Into<Box<[u8]>>) -> Result<()> {
-    COMMAND_CHANNEL.get().unwrap().send(s.into())?;
+    COMMAND_CHANNEL
+        .get()
+        .context("Server stdin closed")?
+        .send(s.into())?;
     Ok(())
 }
 
