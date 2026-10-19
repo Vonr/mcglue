@@ -15,7 +15,9 @@ use std::{
     process::Stdio,
     str::FromStr,
     sync::{Arc, OnceLock},
+    time::Duration,
 };
+use surmap::SurMap;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio_util::sync::CancellationToken;
 use zip::ZipArchive;
@@ -29,7 +31,7 @@ use poise::serenity_prelude::{
 type Error = eyre::Error;
 type Result<T, E = Error> = eyre::Result<T, E>;
 
-static LANG: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
+static LANG: OnceLock<SurMap<&'static str, &'static str>> = OnceLock::new();
 
 #[allow(clippy::type_complexity)]
 static DEATH_MESSAGES: OnceLock<
@@ -43,8 +45,6 @@ static DEATH_MESSAGES: OnceLock<
         &'static [u8],
     )],
 > = OnceLock::new();
-
-static ADVANCEMENTS: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
 
 static COMMAND_CHANNEL: OnceLock<flume::Sender<Box<[u8]>>> = OnceLock::new();
 
@@ -319,13 +319,24 @@ async fn main() -> Result<()> {
     let log_cancel = CancellationToken::new();
     let log_cancel_clone = log_cancel.clone();
     let log_reader = tokio::task::spawn(async move {
-        let http = Http::new(log_reader_token);
-        let webhook = Webhook::from_url(&http, &crate::env::discord_webhook_url()).await?;
+        let (webhook, webhook_rx) = flume::unbounded();
+        tokio::task::spawn(async move {
+            let http = Http::new(log_reader_token);
+            let webhook = Webhook::from_url(&http, &crate::env::discord_webhook_url()).await?;
+
+            while let Ok(msg) = webhook_rx.recv_async().await {
+                let _ = webhook.execute(&http, false, msg).await;
+            }
+
+            Ok::<_, crate::Error>(())
+        });
 
         let mut input = BufReader::new(stdout);
         let mut buf = Vec::with_capacity(16384);
 
         loop {
+            buf.clear();
+
             let n = match log_cancel_clone
                 .run_until_cancelled(input.read_until(b'\n', &mut buf))
                 .await
@@ -355,11 +366,11 @@ async fn main() -> Result<()> {
                 }
             };
 
-            match &log {
+            match log {
                 Log::Chat(ChatLog {
                     sender, message, ..
                 }) => {
-                    let sender: &str = &sender.to_str_lossy();
+                    let sender = sender.to_str_lossy().into_owned();
 
                     let avatar: Cow<'_, str> = if sender == "[Server]" {
                         Cow::Borrowed("https://skinatar.firstdark.dev/avatar/Console")
@@ -368,13 +379,11 @@ async fn main() -> Result<()> {
                     };
 
                     let _ = webhook
-                        .execute(
-                            &http,
-                            false,
+                        .send_async(
                             ExecuteWebhook::new()
                                 .username(sender)
                                 .avatar_url(avatar)
-                                .content(message.to_str_lossy()),
+                                .content(message.to_str_lossy().into_owned()),
                         )
                         .await;
                 }
@@ -386,56 +395,48 @@ async fn main() -> Result<()> {
 
                     let mut owned = Vec::with_capacity(players.len());
                     for player in players {
-                        owned.push(OwnedPlayerData::try_from(player)?);
+                        owned.push(OwnedPlayerData::try_from(&player)?);
                     }
 
                     let owned: Arc<[OwnedPlayerData]> = owned.into();
                     let _ = tx.send(ListData {
                         players: owned,
-                        max: *max,
+                        max,
                     });
                 }
                 Log::Join(JoinLog { player, .. }) => {
-                    let sender: &str = &player.to_str_lossy();
+                    let sender = player.to_str_lossy().into_owned();
+                    let msg = format!("{sender} joined");
 
                     let avatar = format!("https://skinatar.firstdark.dev/avatar/{sender}");
 
                     let _ = webhook
-                        .execute(
-                            &http,
-                            false,
+                        .send_async(
                             ExecuteWebhook::new()
                                 .username(sender)
-                                .avatar_url(&avatar)
+                                .avatar_url(avatar.clone())
                                 .embed(
                                     CreateEmbed::new()
-                                        .author(
-                                            CreateEmbedAuthor::new(format!("{sender} joined"))
-                                                .icon_url(&avatar),
-                                        )
+                                        .author(CreateEmbedAuthor::new(msg).icon_url(avatar))
                                         .colour(colours::branding::GREEN),
                                 ),
                         )
                         .await;
                 }
                 Log::Leave(LeaveLog { player, .. }) => {
-                    let sender: &str = &player.to_str_lossy();
+                    let sender = player.to_str_lossy().into_owned();
+                    let msg = format!("{sender} left");
 
                     let avatar = format!("https://skinatar.firstdark.dev/avatar/{sender}");
 
                     let _ = webhook
-                        .execute(
-                            &http,
-                            false,
+                        .send_async(
                             ExecuteWebhook::new()
                                 .username(sender)
-                                .avatar_url(&avatar)
+                                .avatar_url(avatar.clone())
                                 .embed(
                                     CreateEmbed::new()
-                                        .author(
-                                            CreateEmbedAuthor::new(format!("{sender} left"))
-                                                .icon_url(&avatar),
-                                        )
+                                        .author(CreateEmbedAuthor::new(msg).icon_url(avatar))
                                         .colour(colours::branding::YELLOW),
                                 ),
                         )
@@ -446,37 +447,68 @@ async fn main() -> Result<()> {
                     advancement,
                     ..
                 }) => {
-                    let sender: &str = &player.to_str_lossy();
+                    let sender = player.to_str_lossy().into_owned();
 
                     let avatar = format!("https://skinatar.firstdark.dev/avatar/{sender}");
 
+                    let description = 'desc: {
+                        let Some(lang) = LANG.get() else {
+                            break 'desc "";
+                        };
+
+                        match advancement.to_str().ok().map(|s| lang.get_keys(s)) {
+                            Some(mut keys) => keys
+                                .find_map(|&k| {
+                                    let mut desc_key = k.to_string();
+
+                                    if let Some((before, after)) = k.split_once("title") {
+                                        desc_key.truncate(before.len());
+                                        desc_key.push_str("desc");
+                                        let len_after_desc = desc_key.len();
+                                        desc_key.push_str(after);
+
+                                        if let Some(&desc) = lang.get(desc_key.as_str()) {
+                                            return Some(desc);
+                                        }
+
+                                        desc_key.insert_str(len_after_desc, "ription");
+
+                                        if let Some(&desc) = lang.get(desc_key.as_str()) {
+                                            return Some(desc);
+                                        }
+                                    } else {
+                                        desc_key.push_str(".desc");
+                                        if let Some(&desc) = lang.get(desc_key.as_str()) {
+                                            return Some(desc);
+                                        }
+
+                                        desc_key.push_str("ription");
+                                        if let Some(&desc) = lang.get(desc_key.as_str()) {
+                                            return Some(desc);
+                                        }
+                                    }
+
+                                    None
+                                })
+                                .unwrap_or(""),
+                            None => "",
+                        }
+                    };
+
                     let _ = webhook
-                        .execute(
-                            &http,
-                            false,
+                        .send_async(
                             ExecuteWebhook::new()
                                 .username(sender)
-                                .avatar_url(&avatar)
+                                .avatar_url(avatar.clone())
                                 .embed(
                                     CreateEmbed::new()
                                         .author(
                                             CreateEmbedAuthor::new(
-                                                buf[span.into_range()].to_str_lossy(),
+                                                buf[span.into_range()].to_str_lossy().into_owned(),
                                             )
-                                            .icon_url(&avatar),
+                                            .icon_url(avatar),
                                         )
-                                        .description(
-                                            ADVANCEMENTS
-                                                .get()
-                                                .and_then(|adv| {
-                                                    advancement
-                                                        .to_str()
-                                                        .ok()
-                                                        .and_then(|s| adv.get(s))
-                                                        .copied()
-                                                })
-                                                .unwrap_or_default(),
-                                        )
+                                        .description(description)
                                         .colour(colours::branding::YELLOW),
                                 ),
                         )
@@ -501,11 +533,10 @@ async fn main() -> Result<()> {
                         let mut buf = Vec::new();
 
                         let mut death_messages = Vec::new();
-                        let mut advancements = HashMap::new();
 
                         let mut lang_string = String::new();
                         let mut lang_ranges = Vec::new();
-                        let mut full_lang: HashMap<&'static str, &'static str> = HashMap::new();
+                        let mut full_lang: SurMap<&'static str, &'static str> = SurMap::new();
 
                         reqwest::get(
                             format!("https://assets.mcasset.cloud/{version}/assets/minecraft/lang/{lang_file_name}")
@@ -633,28 +664,16 @@ async fn main() -> Result<()> {
                                     }
                                     .as_bytes(),
                                 ));
-                            } else if k.starts_with("advancements.")
-                                && let Some(prefix) = k.strip_suffix(".title")
-                            {
-                                let mut desc_key = prefix.to_string();
-                                desc_key.push_str(".description");
-                                if let Some(desc) = full_lang.get(&*desc_key) {
-                                    advancements.insert(*v, *desc);
-                                }
                             }
                         }
-                        advancements.shrink_to_fit();
                         full_lang.shrink_to_fit();
 
                         let death_len = death_messages.len();
                         let _ = DEATH_MESSAGES
                             .get_or_init(|| Box::leak(death_messages.into_boxed_slice()));
-                        let advancement_len = advancements.len();
-                        let _ = ADVANCEMENTS.get_or_init(|| advancements);
                         eprintln!(
-                            "Initialized {} death messages and {} advancements from {} lang entries.\nKeys: {} bytes, Values: {} bytes",
+                            "Initialized {} death messages from {} lang entries.\nKeys: {} bytes, Values: {} bytes",
                             death_len,
-                            advancement_len,
                             full_lang.len(),
                             full_lang.keys().map(|&s| s.len()).sum::<usize>(),
                             full_lang.values().map(|&s| s.len()).sum::<usize>()
@@ -666,9 +685,7 @@ async fn main() -> Result<()> {
                 }
                 Log::Done => {
                     let _ = webhook
-                        .execute(
-                            &http,
-                            false,
+                        .send_async(
                             ExecuteWebhook::new()
                                 .username("Console")
                                 .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
@@ -682,9 +699,7 @@ async fn main() -> Result<()> {
                 }
                 Log::Stopping => {
                     let _ = webhook
-                        .execute(
-                            &http,
-                            false,
+                        .send_async(
                             ExecuteWebhook::new()
                                 .username("Console")
                                 .avatar_url("https://skinatar.firstdark.dev/avatar/Console")
@@ -697,24 +712,22 @@ async fn main() -> Result<()> {
                         .await;
                 }
                 Log::Death(DeathLog { victim, .. }) => {
-                    let sender: &str = &victim.to_str_lossy();
+                    let sender = victim.to_str_lossy().into_owned();
 
                     let avatar = format!("https://skinatar.firstdark.dev/avatar/{sender}");
 
                     let _ = webhook
-                        .execute(
-                            &http,
-                            false,
+                        .send_async(
                             ExecuteWebhook::new()
                                 .username(sender)
-                                .avatar_url(&avatar)
+                                .avatar_url(avatar.clone())
                                 .embed(
                                     CreateEmbed::new()
                                         .author(
                                             CreateEmbedAuthor::new(
-                                                buf[span.into_range()].to_str_lossy(),
+                                                buf[span.into_range()].to_str_lossy().into_owned(),
                                             )
-                                            .icon_url(&avatar),
+                                            .icon_url(avatar),
                                         )
                                         .colour(colours::branding::RED),
                                 ),
@@ -723,8 +736,6 @@ async fn main() -> Result<()> {
                 }
                 _ => (),
             }
-
-            buf.clear();
         }
 
         Ok::<(), Error>(())
@@ -776,9 +787,12 @@ async fn main() -> Result<()> {
     eprintln!("Stopping wrapper");
 
     log_cancel.cancel();
-    log_reader.await??;
 
-    logger.await?;
+    tokio::select! {
+        r = log_reader => r??,
+        r = logger => r?,
+        _ = tokio::time::sleep(Duration::from_secs(60)) => {},
+    };
 
     join_set.abort_all();
 

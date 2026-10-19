@@ -1692,6 +1692,8 @@ version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 dependencies = [
+ "allocator-api2",
+ "equivalent",
  "foldhash 0.2.0",
 ]
 
@@ -2747,6 +2749,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "surmap",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -4747,6 +4750,15 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "surmap"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d3503c004bee8e567bd4343d6f545f7375cf012c8a37fb87cbdb17a07ed82c0"
+dependencies = [
+ "hashbrown 0.17.1",
+]
 
 [[package]]
 name = "syn"
