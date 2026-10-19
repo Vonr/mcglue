@@ -29,6 +29,8 @@ pub async fn nbtq(
     path: String,
     #[description = "Save output of filter to the input file"] save: Option<bool>,
 ) -> Result<(), Error> {
+    ctx.defer_ephemeral().await?;
+
     let save = save.unwrap_or(false);
     let path = ctx.data().server_directory.safe_join(path)?;
     let file_name = path

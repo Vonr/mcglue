@@ -150,8 +150,8 @@ impl<'src> Log<'src> {
                     .repeated()
                     .at_least(1)
                     .to_slice(),
-                just(b' ').ignored(),
                 group((
+                    just(b" (").ignored(),
                     hex(8),
                     just(b'-').ignored(),
                     hex(4),
@@ -161,8 +161,9 @@ impl<'src> Log<'src> {
                     hex(4),
                     just(b'-').ignored(),
                     hex(12),
+                    just(b')').ignored(),
                 ))
-                .map(|(a, _, b, _, c, _, d, _, e)| {
+                .map(|(_, a, _, b, _, c, _, d, _, e, _)| {
                     let mut uuid = a;
                     uuid <<= 16;
                     uuid += b;
@@ -175,9 +176,9 @@ impl<'src> Log<'src> {
 
                     Uuid::from_u128(uuid)
                 })
-                .delimited_by(just(b'('), just(b')')),
+                .or_not(),
             ))
-            .map(|(name, _, uuid)| PlayerData { name, uuid })
+            .map(|(name, uuid)| PlayerData { name, uuid })
             .separated_by(just(b", "))
             .collect::<Vec<_>>(),
         ))
@@ -507,7 +508,7 @@ pub struct ListUuidsLog<'src> {
 #[derive(Clone, Debug)]
 pub struct PlayerData<'src> {
     pub name: &'src [u8],
-    pub uuid: Uuid,
+    pub uuid: Option<Uuid>,
 }
 
 impl TryFrom<&PlayerData<'_>> for OwnedPlayerData {
@@ -524,7 +525,7 @@ impl TryFrom<&PlayerData<'_>> for OwnedPlayerData {
 #[derive(Clone, Debug)]
 pub struct OwnedPlayerData {
     pub name: Box<str>,
-    pub uuid: Uuid,
+    pub uuid: Option<Uuid>,
 }
 
 #[derive(Clone, Debug)]

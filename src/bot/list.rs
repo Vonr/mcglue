@@ -6,6 +6,8 @@ use crate::{Result, interface};
 /// Get a list of players
 #[poise::command(slash_command, guild_only)]
 pub async fn list(ctx: Context<'_>) -> Result<()> {
+    ctx.defer_ephemeral().await?;
+
     let list = {
         let mut recv = interface::LIST_SENDER.get().unwrap().subscribe();
         interface::list().await?;

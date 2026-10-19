@@ -10,7 +10,7 @@ use std::{
 };
 
 use super::Context;
-use crate::{Error, GAME_VERSION};
+use crate::{Error, GAME_VERSION, parsing::OwnedPlayerData};
 
 async fn autocomplete_dimension<'ctx>(
     _ctx: Context<'ctx>,
@@ -42,21 +42,23 @@ pub async fn tpo(
     #[autocomplete = "autocomplete_dimension"]
     dimension: Option<String>,
 ) -> Result<(), Error> {
+    ctx.defer_ephemeral().await?;
+
     let uuid = super::maybe_username_to_uuid(&player).await?;
 
     let list = crate::interface::list().await?;
 
-    if let Some(p) = list
-        .players
-        .iter()
-        .map(|p| (&p.name, p.uuid))
-        .find(|p| p.1 == uuid)
-    {
-        bail!(
-            "Player {} ({}) is currently online.",
-            p.0,
-            p.1.as_hyphenated()
-        );
+    if let Some(OwnedPlayerData { name, uuid }) = list.players.iter().find(|p| match p.uuid {
+        Some(u) => u == uuid,
+        None => *p.name == player,
+    }) {
+        match uuid {
+            Some(uuid) => bail!(
+                "Player {name} ({}) is currently online.",
+                uuid.as_hyphenated()
+            ),
+            None => bail!("Player {name} is currently online."),
+        }
     }
 
     let mut filename = uuid.as_hyphenated().to_string();

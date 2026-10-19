@@ -9,6 +9,7 @@ use crate::Result;
 /// Get the latest crash log
 #[poise::command(slash_command, guild_only, check = "super::is_operator")]
 pub async fn crash(ctx: Context<'_>) -> Result<()> {
+    ctx.defer_ephemeral().await?;
     let path = ctx.data().server_directory.join("crash-reports");
 
     let (name, bytes) = tokio::task::spawn_blocking(move || {
