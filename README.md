@@ -52,10 +52,10 @@ docker compose up
 See `test.sh`, and `compose.yml` for a setup that uses [`itzg/docker-minecraft-server`](https://docker-minecraft-server.readthedocs.io/) via Docker Compose.
 
 ### Environment Variables
-- `$DISCORD_BOT_TOKEN` should be set to a Discord bot token
-- `$DISCORD_WEBHOOK_URL` should be set to a Discord webhook URL
-- `$DISCORD_CONSOLE_WEBHOOK_URL` should be set to a Discord webhook URL
-- `$DISCORD_CHANNEL_ID` should be set to a Discord channel ID
-- `$DISCORD_CONSOLE_CHANNEL_ID` should be set to a Discord channel ID
-- `$DISCORD_OPERATOR_ROLE_ID` should be set to a Discord role ID
-- `$SERVER_DIRECTORY` should be set to the path to the server's root directory
+- `$MCGLUE_DISCORD_BOT_TOKEN` should be set to a Discord bot token
+- `$MCGLUE_DISCORD_WEBHOOK_URL` should be set to a Discord webhook URL
+- `$MCGLUE_DISCORD_CONSOLE_WEBHOOK_URL` should be set to a Discord webhook URL
+- `$MCGLUE_DISCORD_CHANNEL_ID` should be set to a Discord channel ID
+- `$MCGLUE_DISCORD_CONSOLE_CHANNEL_ID` should be set to a Discord channel ID
+- `$MCGLUE_DISCORD_OPERATOR_ROLE_ID` should be set to a Discord role ID
+- `$MCGLUE_SERVER_DIRECTORY` should be set to the path to the server's root directory

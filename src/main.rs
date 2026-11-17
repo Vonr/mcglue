@@ -61,30 +61,30 @@ enum DeathMessageComponent {
 mod env {
     use menv::require_envs;
     require_envs! {
-        (assert_env_vars, any_set, gen_help);
+        (meta);
 
-        discord_bot_token, "DISCORD_BOT_TOKEN", String,
+        discord_bot_token, ["MCGLUE_DISCORD_BOT_TOKEN", "DISCORD_BOT_TOKEN"], String,
         "DISCORD_BOT_TOKEN should be set to a Discord bot token";
 
-        discord_webhook_url, "DISCORD_WEBHOOK_URL", String,
+        discord_webhook_url, ["MCGLUE_DISCORD_WEBHOOK_URL", "DISCORD_WEBHOOK_URL"], String,
         "DISCORD_WEBHOOK_URL should be set to a Discord webhook URL";
 
-        discord_console_webhook_url, "DISCORD_CONSOLE_WEBHOOK_URL", String,
+        discord_console_webhook_url, ["MCGLUE_DISCORD_CONSOLE_WEBHOOK_URL", "DISCORD_CONSOLE_WEBHOOK_URL"], String,
         "DISCORD_CONSOLE_WEBHOOK_URL should be set to a Discord webhook URL";
 
-        discord_channel_id, "DISCORD_CHANNEL_ID", u64,
+        discord_channel_id, ["MCGLUE_DISCORD_CHANNEL_ID", "DISCORD_CHANNEL_ID"], u64,
         "DISCORD_CHANNEL_ID should be set to a Discord channel ID";
 
-        discord_console_channel_id, "DISCORD_CONSOLE_CHANNEL_ID", u64,
+        discord_console_channel_id, ["MCGLUE_DISCORD_CONSOLE_CHANNEL_ID", "DISCORD_CONSOLE_CHANNEL_ID"], u64,
         "DISCORD_CONSOLE_CHANNEL_ID should be set to a Discord channel ID";
 
-        discord_operator_role_id, "DISCORD_OPERATOR_ROLE_ID", u64,
+        discord_operator_role_id, ["MCGLUE_DISCORD_OPERATOR_ROLE_ID", "DISCORD_OPERATOR_ROLE_ID"], u64,
         "DISCORD_OPERATOR_ROLE_ID should be set to a Discord role ID";
 
-        server_directory, "SERVER_DIRECTORY", String,
+        server_directory, ["MCGLUE_SERVER_DIRECTORY", "SERVER_DIRECTORY"], String,
         "SERVER_DIRECTORY should be set to the path to the server's root directory";
 
-        language?, "GAME_LANGUAGE", String,
+        language?, ["MCGLUE_GAME_LANGUAGE", "GAME_LANGUAGE"], String,
         r#"GAME_LANGUAGE ("en_us" by default) should be set to the language the server is running"#;
     }
 }
@@ -105,10 +105,16 @@ async fn main() -> Result<()> {
 
     let _ = dotenvy::dotenv();
 
-    if env::any_set() {
-        env::assert_env_vars();
+    let env_names = env::meta::ALL_VARS
+        .iter()
+        .flat_map(|var| var.names)
+        .copied()
+        .collect::<Box<[_]>>();
+
+    if env_names.iter().any(|name| std::env::var(name).is_ok()) {
+        env::meta::assert_vars();
     } else {
-        eprintln!("{}", env::gen_help());
+        eprintln!("{}", env::meta::gen_help());
         std::process::exit(1);
     }
 
@@ -286,6 +292,9 @@ async fn main() -> Result<()> {
         let mut process = tokio::process::Command::new(cmd_name);
         for arg in args {
             process.arg(arg);
+        }
+        for name in env_names {
+            process.env_remove(name);
         }
 
         #[cfg(unix)]

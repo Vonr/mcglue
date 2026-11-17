@@ -33,7 +33,7 @@
   },
   "scripts": {
     "installation": {
-      "script": "#!/bin/ash\n# Vanilla MC Installation Script\n#\n# Server Files: /mnt/server\nmkdir -p /mnt/server\ncd /mnt/server\n\nLATEST_VERSION=`curl https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.latest.release'`\nLATEST_SNAPSHOT_VERSION=`curl https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.latest.snapshot'`\n\necho -e \"latest version is $LATEST_VERSION\"\necho -e \"latest snapshot is $LATEST_SNAPSHOT_VERSION\"\n\nif [ -z \"$VANILLA_VERSION\" ] || [ \"$VANILLA_VERSION\" == \"latest\" ]; then\n  MANIFEST_URL=$(curl -sSL https://launchermeta.mojang.com/mc/game/version_manifest.json | jq --arg VERSION $LATEST_VERSION -r '.versions | .[] | select(.id== $VERSION )|.url')\nelif [ \"$VANILLA_VERSION\" == \"snapshot\" ]; then\n  MANIFEST_URL=$(curl -sSL https://launchermeta.mojang.com/mc/game/version_manifest.json | jq --arg VERSION $LATEST_SNAPSHOT_VERSION -r '.versions | .[] | select(.id== $VERSION )|.url')\nelse\n  MANIFEST_URL=$(curl -sSL https://launchermeta.mojang.com/mc/game/version_manifest.json | jq --arg VERSION $VANILLA_VERSION -r '.versions | .[] | select(.id== $VERSION )|.url')\nfi\n\nDOWNLOAD_URL=$(curl ${MANIFEST_URL} | jq .downloads.server | jq -r '. | .url')\n\necho -e \"running: curl -o ${SERVER_JARFILE} $DOWNLOAD_URL\"\ncurl -o ${SERVER_JARFILE} $DOWNLOAD_URL\n\necho -e \"Installing mcglue\"\nmkdir .mcglue\nchmod -R +rw .mcglue\nrm -f .mcglue/mcglue\ncurl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | sh\n/root/.cargo/bin/cargo-binstall -y --install-path .mcglue --no-track --git https://github.com/Vonr/mcglue mcglue\nrm -f \"$(which /root/.cargo/bin/cargo-binstall)\"\nchmod -R -rw .mcglue\necho -e \"Installed mcglue\"\n\necho -e \"Install Complete\"",
+      "script": "#!/bin/ash\n# Vanilla MC Installation Script\n#\n# Server Files: /mnt/server\nmkdir -p /mnt/server\ncd /mnt/server\n\nLATEST_VERSION=`curl https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.latest.release'`\nLATEST_SNAPSHOT_VERSION=`curl https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.latest.snapshot'`\n\necho -e \"latest version is $LATEST_VERSION\"\necho -e \"latest snapshot is $LATEST_SNAPSHOT_VERSION\"\n\nif [ -z \"$VANILLA_VERSION\" ] || [ \"$VANILLA_VERSION\" == \"latest\" ]; then\n  MANIFEST_URL=$(curl -sSL https://launchermeta.mojang.com/mc/game/version_manifest.json | jq --arg VERSION $LATEST_VERSION -r '.versions | .[] | select(.id== $VERSION )|.url')\nelif [ \"$VANILLA_VERSION\" == \"snapshot\" ]; then\n  MANIFEST_URL=$(curl -sSL https://launchermeta.mojang.com/mc/game/version_manifest.json | jq --arg VERSION $LATEST_SNAPSHOT_VERSION -r '.versions | .[] | select(.id== $VERSION )|.url')\nelse\n  MANIFEST_URL=$(curl -sSL https://launchermeta.mojang.com/mc/game/version_manifest.json | jq --arg VERSION $VANILLA_VERSION -r '.versions | .[] | select(.id== $VERSION )|.url')\nfi\n\nDOWNLOAD_URL=$(curl ${MANIFEST_URL} | jq .downloads.server | jq -r '. | .url')\n\necho -e \"running: curl -o ${SERVER_JARFILE} $DOWNLOAD_URL\"\ncurl -o ${SERVER_JARFILE} $DOWNLOAD_URL\n\necho -e \"Installing mcglue\"\nmkdir .mcglue\nchmod -R +rw .mcglue\nrm -f .mcglue/mcglue\ncurl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | sed 's/tar -/tar --no-same-owner -/' | sh\n/root/.cargo/bin/cargo-binstall -y --install-path .mcglue --no-track --git https://github.com/Vonr/mcglue mcglue\nrm -f \"$(which /root/.cargo/bin/cargo-binstall)\"\nchmod -R -rw .mcglue\necho -e \"Installed mcglue\"\n\necho -e \"Install Complete\"",
       "container": "ghcr.io/pelican-eggs/installers:alpine",
       "entrypoint": "ash"
     }
@@ -62,7 +62,7 @@
     {
       "name": "mcglue Discord Bot Token",
       "description": null,
-      "env_variable": "DISCORD_BOT_TOKEN",
+      "env_variable": "MCGLUE_DISCORD_BOT_TOKEN",
       "default_value": null,
       "user_viewable": true,
       "user_editable": true,
@@ -72,7 +72,7 @@
     {
       "name": "mcglue Discord Channel ID",
       "description": null,
-      "env_variable": "DISCORD_CHANNEL_ID",
+      "env_variable": "MCGLUE_DISCORD_CHANNEL_ID",
       "default_value": null,
       "user_viewable": true,
       "user_editable": true,
@@ -82,7 +82,7 @@
     {
       "name": "mcglue Discord Console Channel ID",
       "description": null,
-      "env_variable": "DISCORD_CONSOLE_CHANNEL_ID",
+      "env_variable": "MCGLUE_DISCORD_CONSOLE_CHANNEL_ID",
       "default_value": null,
       "user_viewable": true,
       "user_editable": true,
@@ -92,7 +92,7 @@
     {
       "name": "mcglue Discord Chat Webhook URL",
       "description": null,
-      "env_variable": "DISCORD_WEBHOOK_URL",
+      "env_variable": "MCGLUE_DISCORD_WEBHOOK_URL",
       "default_value": null,
       "user_viewable": true,
       "user_editable": true,
@@ -102,7 +102,7 @@
     {
       "name": "mcglue Discord Console Webhook URL",
       "description": null,
-      "env_variable": "DISCORD_CONSOLE_WEBHOOK_URL",
+      "env_variable": "MCGLUE_DISCORD_CONSOLE_WEBHOOK_URL",
       "default_value": null,
       "user_viewable": true,
       "user_editable": true,
@@ -112,7 +112,7 @@
     {
       "name": "mcglue Discord Operator Role ID",
       "description": null,
-      "env_variable": "DISCORD_OPERATOR_ROLE_ID",
+      "env_variable": "MCGLUE_DISCORD_OPERATOR_ROLE_ID",
       "default_value": null,
       "user_viewable": true,
       "user_editable": true,
@@ -122,7 +122,7 @@
     {
       "name": "mcglue Server Directory",
       "description": null,
-      "env_variable": "SERVER_DIRECTORY",
+      "env_variable": "MCGLUE_SERVER_DIRECTORY",
       "default_value": ".",
       "user_viewable": false,
       "user_editable": false,
