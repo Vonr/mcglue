@@ -13,4 +13,4 @@ if ! command -V sudo; then
 fi
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
-    xz-utils liblz4-tool musl-tools brotli zstd
+    xz-utils lz4 musl-tools brotli zstd
