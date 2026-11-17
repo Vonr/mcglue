@@ -105,13 +105,7 @@ async fn main() -> Result<()> {
 
     let _ = dotenvy::dotenv();
 
-    let env_names = env::meta::ALL_VARS
-        .iter()
-        .flat_map(|var| var.names)
-        .copied()
-        .collect::<Box<[_]>>();
-
-    if env_names.iter().any(|name| std::env::var(name).is_ok()) {
+    if env::meta::any_set() {
         env::meta::assert_vars();
     } else {
         eprintln!("{}", env::meta::gen_help());
@@ -293,7 +287,7 @@ async fn main() -> Result<()> {
         for arg in args {
             process.arg(arg);
         }
-        for name in env_names {
+        for name in env::meta::ALL_NAMES {
             process.env_remove(name);
         }
 
