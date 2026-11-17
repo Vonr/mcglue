@@ -6,7 +6,6 @@ license = "MPL-2.0 OR GPL-3.0-only"
 repository = "https://github.com/Vonr/mcglue"
 
 [dependencies]
-async-signal = "0.2"
 bstr = "1"
 btoi = "0.5"
 chumsky = "0.14"
